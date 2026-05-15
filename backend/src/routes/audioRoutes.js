@@ -64,6 +64,40 @@ router.get("/:id", getRecordingById);
 // Stream audio (used by the browser's audio player)
 router.get("/:id/stream", streamAudio);
 
+// ── Trigger AI analysis on a recording ───────────────────
+// POST /api/audio/:id/analyse
+router.post("/:id/analyse", async (req, res) => {
+    try {
+        const AudioRecording = require("../models/AudioRecording");
+        const recording = await AudioRecording.findById(req.params.id);
+        if (!recording) {
+            return res.status(404).json({ message: "Recording not found." });
+        }
+
+        // Check ownership (non-admins can only analyse their own)
+        const isAdmin = ["super_admin", "company_admin"].includes(req.user.role);
+        if (!isAdmin && recording.uploadedBy.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: "Access denied." });
+        }
+
+        // Import and run the analysis worker
+        const { processAudioRecording } = require("../services/analysisWorker");
+
+        // Fire async — don't block the response
+        processAudioRecording(req.params.id).catch((err) => {
+            console.error(`Analysis failed for ${req.params.id}:`, err.message);
+        });
+
+        res.status(202).json({
+            message: "AI analysis started.",
+            audioRecordingId: req.params.id,
+        });
+    } catch (error) {
+        console.error("Analyse trigger error:", error);
+        res.status(500).json({ message: "Failed to start analysis.", error: error.message });
+    }
+});
+
 // Delete
 router.delete("/:id", deleteRecording);
 

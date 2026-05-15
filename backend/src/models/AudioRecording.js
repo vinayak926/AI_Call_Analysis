@@ -67,6 +67,14 @@ const audioRecordingSchema = new mongoose.Schema(
             type: String,
             default: "",
         },
+
+        // Processing pipeline status
+        // pending → processing → analysed | failed
+        status: {
+            type: String,
+            enum: ["pending", "processing", "analysed", "failed"],
+            default: "pending",
+        },
     },
     { timestamps: true }
 );

@@ -22,6 +22,7 @@ app.use("/uploads", express.static(path.resolve(uploadDir)));
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/calls", require("./routes/callRoutes"));
 app.use("/api/audio", audioRoutes);
+app.use("/api/analysis", require("./routes/analysisRoutes"));
 // app.use("/api/reports", require("./routes/reportRoutes")); // Phase 2
 
 // ── Health check ─────────────────────────────────────

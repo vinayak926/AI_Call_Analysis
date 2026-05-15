@@ -4,6 +4,7 @@ import React, { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Upload, File, CheckCircle, AlertCircle, Loader } from "lucide-react";
 import { uploadAudioFile } from "../services/api";
+import Navbar from "../components/Layout/Navbar";
 
 export default function UploadAudioPage() {
     const [file, setFile] = useState(null);
@@ -49,7 +50,9 @@ export default function UploadAudioPage() {
     };
 
     return (
-        <div style={{ minHeight: "100vh", background: "#f8fafc", padding: "40px 24px" }}>
+        <div style={{ display: 'flex', minHeight: '100vh' }}>
+            <Navbar />
+            <div className="md:ml-[240px]" style={{ flex: 1, background: "#f8fafc", minHeight: "100vh", padding: "40px 24px" }}>
             <div style={{ maxWidth: "520px", margin: "0 auto" }}>
                 <h1 style={{ fontSize: "24px", fontWeight: "800", color: "#0f172a", marginBottom: "8px" }}>Upload Audio Recording</h1>
                 <p style={{ fontSize: "14px", color: "#64748b", marginBottom: "32px" }}>Supported: MP3, WAV, M4A, OGG, WEBM — max 100 MB</p>
@@ -127,6 +130,7 @@ export default function UploadAudioPage() {
                         <AlertCircle size={16} /> {error}
                     </div>
                 )}
+            </div>
             </div>
         </div>
     );

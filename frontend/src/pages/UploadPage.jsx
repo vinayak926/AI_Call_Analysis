@@ -2,7 +2,7 @@
 import React, { useState, useRef } from 'react';
 import { Upload, File, CheckCircle, AlertCircle, Loader } from 'lucide-react';
 import API from '../services/api';
-import TopBar from '../components/Layout/TopBar';
+import Navbar from '../components/Layout/Navbar';
 
 export default function UploadPage() {
     const [files, setFiles] = useState([]);
@@ -51,9 +51,9 @@ export default function UploadPage() {
     };
 
     return (
-        <>
-            <TopBar />
-            <div className="min-h-screen bg-gray-50 p-8">
+        <div style={{ display: 'flex', minHeight: '100vh' }}>
+            <Navbar />
+            <div className="md:ml-[240px]" style={{ flex: 1, background: '#f8f7f4', minHeight: '100vh', padding: '32px 40px' }}>
                 <div className="max-w-2xl mx-auto">
                     <h1 className="text-2xl font-bold text-gray-900 mb-2">Upload Call Recordings</h1>
                     <p className="text-sm text-gray-500 mb-8">Supported formats: MP3, WAV, M4A — max 100 MB per file</p>
@@ -127,6 +127,6 @@ export default function UploadPage() {
                     )}
                 </div>
             </div>
-        </>
+        </div>
     );
 }
