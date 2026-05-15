@@ -9,6 +9,7 @@ const {
   approveUser,
   changeRole,
   getMe,
+  deleteUser,
 } = require("../controllers/authController");
 const { protect, adminOnly } = require("../middleware/authMiddleware");
 
@@ -24,5 +25,6 @@ router.get("/me", protect, getMe);
 router.get("/users", protect, adminOnly, getAllUsers);
 router.patch("/approve/:id", protect, adminOnly, approveUser);
 router.patch("/role/:id", protect, adminOnly, changeRole);
+router.delete("/users/:id", protect, adminOnly, deleteUser);
 
 module.exports = router;

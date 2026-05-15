@@ -1,14 +1,4 @@
-// //server.js
-
-// require("dotenv").config();
-// const app = require("./src/app");
-// const connectDB = require("./src/config/db");
-
-// connectDB();
-
-// app.listen(process.env.PORT, () =>
-//   console.log(`🚀 AI Analysis Server on ${process.env.PORT}`)
-// );
+// server.js
 
 require("dotenv").config();
 const app = require("./src/app");
@@ -20,11 +10,12 @@ const seedAdmin = async () => {
     const adminEmail = process.env.ADMIN_EMAIL || "admin@callintel.com";
     const adminPassword = process.env.ADMIN_PASSWORD || "Admin@CallIntel2026";
 
-    // Pehle purana admin delete karo (plaintext wala)
-    await User.deleteOne({ email: adminEmail });
-    console.log("🗑️ Old admin deleted");
+    const existing = await User.findOne({ email: adminEmail });
+    if (existing) {
+      console.log("ℹ️ Admin already exists, skipping seed.");
+      return;
+    }
 
-    // new User() use karo — pre-save hook khud hash karega
     const admin = new User({
       fullName: "Super Admin",
       email: adminEmail,
@@ -37,7 +28,7 @@ const seedAdmin = async () => {
     });
 
     await admin.save();
-    console.log("✅ Admin seeded with hashed password:", adminEmail);
+    console.log("✅ Admin seeded:", adminEmail);
   } catch (err) {
     console.error("❌ Seed error:", err.message);
   }

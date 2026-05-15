@@ -2,11 +2,12 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { LayoutDashboard, Users, LogOut, Phone } from 'lucide-react';
+import { LayoutDashboard, Users, LogOut, Phone, BarChart2, Mic } from 'lucide-react';
+
 
 const LogoMark = () => (
   <svg width="22" height="22" viewBox="0 0 28 28" fill="none">
-    <path d="M4 6 L14 22 L24 6" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+    <path d="M4 6 L14 22 L24 6" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
   </svg>
 );
 
@@ -23,6 +24,8 @@ export default function AdminLayout({ children }) {
   const navItems = [
     { path: '/admin', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/admin/users', label: 'Users', icon: Users },
+    { path: '/calls', label: 'All Calls', icon: Phone },
+    { path: '/recordings', label: 'Recordings', icon: Mic },
   ];
 
   return (
