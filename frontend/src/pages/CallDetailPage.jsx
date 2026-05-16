@@ -1,272 +1,488 @@
 // src/pages/CallDetailPage.jsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Zap, Loader, RefreshCw } from 'lucide-react';
+import {
+  ArrowLeft, Zap, Loader, RefreshCw, CheckCircle, XCircle,
+  Clock, AlertTriangle, RotateCcw, FileText, User, BookOpen,
+  MapPin, TrendingUp, MessageSquare, PhoneCall, Star
+} from 'lucide-react';
 import API from '../services/api';
 import Navbar from '../components/Layout/Navbar';
+import AudioPlayer from '../components/AudioPlayer';
+import { useAuth } from '../context/AuthContext';
 
-const sentimentColor = { Positive: '#16a34a', Negative: '#dc2626', Neutral: '#d97706' };
+// ── Helpers ──────────────────────────────────────────────────────────
+const BASE = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
+const getCallStreamUrl = (id) => {
+  const token = localStorage.getItem('token');
+  return `${BASE}/api/calls/${id}/stream?token=${token}`;
+};
+
+const sentimentStyles = {
+  Positive: { bg: '#f0fdf4', color: '#16a34a', border: '#bbf7d0' },
+  Negative: { bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
+  Neutral:  { bg: '#fffbeb', color: '#d97706', border: '#fde68a' },
+};
+
+const statusStyles = {
+  completed:  { bg: '#f0fdf4', color: '#16a34a' },
+  processing: { bg: '#eff6ff', color: '#2563eb' },
+  failed:     { bg: '#fef2f2', color: '#dc2626' },
+  pending:    { bg: '#fffbeb', color: '#d97706' },
+};
+
+const scoreColor = (val, max = 10) => {
+  const pct = val / max;
+  if (pct >= 0.7) return '#16a34a';
+  if (pct >= 0.4) return '#f59e0b';
+  return '#ef4444';
+};
+
+const fmt = (secs) => {
+  if (!secs) return null;
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}m ${s}s`;
+};
+
+// ── Sub-components ────────────────────────────────────────────────────
+
+function Badge({ label, style }) {
+  return (
+    <span style={{
+      display: 'inline-block', padding: '3px 12px', borderRadius: '999px',
+      fontSize: '12px', fontWeight: '700', border: '1px solid',
+      ...style,
+    }}>{label}</span>
+  );
+}
+
+function ScoreBar({ label, value, max = 10 }) {
+  const pct = value != null ? (value / max) * 100 : 0;
+  const color = value != null ? scoreColor(value, max) : '#e5e7eb';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <span style={{ fontSize: '13px', color: '#6b7280', width: '190px', flexShrink: 0 }}>{label}</span>
+      <div style={{ flex: 1, background: '#f1f5f9', borderRadius: '999px', height: '8px', overflow: 'hidden' }}>
+        <div style={{
+          width: `${pct}%`, height: '8px', borderRadius: '999px',
+          background: color, transition: 'width 0.7s ease',
+        }} />
+      </div>
+      <span style={{ fontSize: '13px', fontWeight: '800', color: '#1e293b', width: '36px', textAlign: 'right' }}>
+        {value != null ? `${value}${max === 100 ? '%' : ''}` : '—'}
+      </span>
+    </div>
+  );
+}
+
+function Card({ children, style }) {
+  return (
+    <div style={{
+      background: '#fff', border: '1px solid #e2e8f0',
+      borderRadius: '16px', padding: '24px', ...style,
+    }}>
+      {children}
+    </div>
+  );
+}
+
+function CardTitle({ children }) {
+  return (
+    <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a', margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+      {children}
+    </h3>
+  );
+}
+
+function MetaField({ label, value, large, color }) {
+  return (
+    <div>
+      <p style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.07em', margin: '0 0 4px' }}>{label}</p>
+      <p style={{ margin: 0, fontWeight: '700', fontSize: large ? '22px' : '14px', color: color || '#0f172a' }}>
+        {value || '—'}
+      </p>
+    </div>
+  );
+}
+
+function ConcernChip({ label, active }) {
+  return (
+    <span style={{
+      padding: '4px 12px', borderRadius: '999px', fontSize: '12px', fontWeight: '600',
+      background: active ? '#fef2f2' : '#f8fafc',
+      color: active ? '#dc2626' : '#94a3b8',
+      border: `1px solid ${active ? '#fecaca' : '#e2e8f0'}`,
+    }}>
+      {active ? '⚠ ' : ''}{label}
+    </span>
+  );
+}
+
+// ── Main Component ────────────────────────────────────────────────────
 export default function CallDetailPage() {
   const { id } = useParams();
-  const [call, setCall] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [analysing, setAnalysing] = useState(false);
+  const { user } = useAuth();
+  const isAdmin = ['super_admin', 'company_admin'].includes(user?.role);
 
-  const fetchCall = async () => {
+  const [call, setCall]         = useState(null);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState(null);
+  const [triggering, setTriggering] = useState(false);
+  const [activeTab, setActiveTab]   = useState('original'); // 'original' | 'english'
+  const pollRef = useRef(null);
+
+  // ── Fetch call ────────────────────────────────────────────────────
+  const fetchCall = useCallback(async () => {
     try {
       const res = await API.get(`/calls/${id}`);
-      setCall(res.data.call);
+      const c = res.data.call || res.data;
+      setCall(c);
+      setError(null);
+      return c;
     } catch (err) {
-      setError('Failed to load call details.');
+      setError(err.response?.data?.message || 'Failed to load call details.');
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchCall();
-
-    // Poll for status if still processing
-    const poll = setInterval(async () => {
-      try {
-        const res = await API.get(`/calls/${id}/status`);
-        if (res.data.status === 'completed' || res.data.status === 'failed') {
-          clearInterval(poll);
-          fetchCall();
-          setAnalysing(false);
-        }
-      } catch { }
-    }, 5000);
-
-    return () => clearInterval(poll);
   }, [id]);
 
-  // ── Trigger AI analysis ─────────────────────────────
-  const handleAnalyse = async () => {
-    setAnalysing(true);
+  // ── Polling ───────────────────────────────────────────────────────
+  const stopPolling = () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  };
+
+  const startPolling = useCallback(() => {
+    if (pollRef.current) return;
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await API.get(`/calls/${id}/status`);
+        const status = res.data.status;
+        if (status === 'completed' || status === 'failed') {
+          stopPolling();
+          setTriggering(false);
+          await fetchCall();
+        }
+      } catch { /* keep polling on network blip */ }
+    }, 5000);
+  }, [id, fetchCall]);
+
+  useEffect(() => {
+    fetchCall().then((c) => {
+      if (c && (c.status === 'processing')) startPolling();
+    });
+    return stopPolling;
+  }, [id]);
+
+  useEffect(() => {
+    if (!call) return;
+    if (call.status === 'processing') startPolling();
+    if (call.status === 'completed' || call.status === 'failed') stopPolling();
+  }, [call?.status]);
+
+  // ── Trigger Analysis ──────────────────────────────────────────────
+  // Uses /calls/:id/analyse — the call-specific pipeline endpoint
+  const handleTrigger = async () => {
+    setTriggering(true);
     try {
-      await API.post(`/audio/${id}/analyse`);
-      // Poll will pick up completion
+      await API.post(`/calls/${id}/analyse`);
+      startPolling();
     } catch (err) {
-      alert(err.response?.data?.message || 'Analysis failed.');
-      setAnalysing(false);
+      const msg = err.response?.data?.message || 'Could not start analysis.';
+      alert(msg);
+      setTriggering(false);
     }
   };
 
-  const scoreItems = [
-    { label: 'Confidence', value: call?.scores?.confidence },
-    { label: 'Communication', value: call?.scores?.communication },
-    { label: 'Engagement', value: call?.scores?.engagement },
-    { label: 'Objection Handling', value: call?.scores?.objectionHandling },
-    { label: 'Script Compliance', value: call?.scores?.scriptCompliance },
-  ];
-
-  const scoreColor = (val) => {
-    if (!val) return '#e5e7eb';
-    if (val >= 7) return '#22c55e';
-    if (val >= 4) return '#f59e0b';
-    return '#ef4444';
+  // ── Re-Analyse (admin) ────────────────────────────────────────────
+  const handleReanalyse = async () => {
+    if (!window.confirm('Re-run AI analysis? Previous results will be cleared.')) return;
+    setTriggering(true);
+    try {
+      await API.post(`/calls/${id}/reanalyse`);
+      startPolling();
+      await fetchCall();
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Re-analysis failed.';
+      alert(msg);
+      setTriggering(false);
+    }
   };
 
+  // ── Render states ─────────────────────────────────────────────────
   if (loading) return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#f8fafc' }}>
       <Navbar />
-      <div className="md:ml-[240px]" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <RefreshCw size={28} style={{ animation: 'spin 1s linear infinite', color: '#6366f1' }} />
-      </div>
+      <main style={{ flex: 1, marginLeft: '240px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Loader size={32} style={{ animation: 'spin 1s linear infinite', color: '#6366f1' }} />
+        <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+      </main>
     </div>
   );
 
   if (error) return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#f8fafc' }}>
       <Navbar />
-      <div className="md:ml-[240px]" style={{ flex: 1, padding: '40px' }}>
-        <p style={{ color: '#dc2626' }}>{error}</p>
-      </div>
+      <main style={{ flex: 1, marginLeft: '240px', padding: '40px' }}>
+        <p style={{ color: '#dc2626', marginBottom: '16px' }}>{error}</p>
+        <Link to="/calls" style={{ color: '#6366f1', fontWeight: '600', fontSize: '14px' }}>← Back to Calls</Link>
+      </main>
     </div>
   );
 
   if (!call) return null;
 
-  const needsAnalysis = call.status === 'pending' || call.status === 'failed';
-  const isProcessing = call.status === 'processing' || analysing;
+  const isPending    = call.status === 'pending';
+  const isProcessing = call.status === 'processing' || triggering;
+  const isCompleted  = call.status === 'completed';
+  const isFailed     = call.status === 'failed';
+
+  // Normalise scores — Call model stores them under `scores.*`
+  const scores = {
+    communication: call.scores?.communication ?? call.communicationScore,
+    engagement:    call.scores?.engagement    ?? call.engagementScore,
+    confidence:    call.scores?.confidence    ?? call.counsellorConfidenceScore,
+    objection:     call.scores?.objectionHandling,
+    script:        call.scores?.scriptCompliance,
+  };
+
+  const sentiment = call.sentiment;
+  const sentSt = sentiment ? sentimentStyles[sentiment] : null;
+  const statusSt = statusStyles[call.status] || statusStyles.pending;
+
+  const hasTranscript = call.transcriptOriginal || call.transcriptEnglish;
+  const isTranslated  = call.detectedLanguage && call.detectedLanguage !== 'en' && call.transcriptEnglish;
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#f8fafc' }}>
       <Navbar />
-      <div className="md:ml-[240px]" style={{ flex: 1, background: '#f8f7f4', minHeight: '100vh', padding: '32px 40px' }}>
-        <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-          <Link to="/calls" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#6b6560', textDecoration: 'none', marginBottom: '24px', fontWeight: '600' }}>
-            <ArrowLeft size={16} /> Back to Call Records
+
+      <main style={{ flex: 1, marginLeft: '240px', padding: '32px 40px', maxWidth: 'calc(100vw - 240px)' }}>
+        <div style={{ maxWidth: '960px', margin: '0 auto' }}>
+
+          {/* ── Back link ── */}
+          <Link to="/calls" style={{
+            display: 'inline-flex', alignItems: 'center', gap: '6px',
+            fontSize: '13px', color: '#64748b', textDecoration: 'none',
+            fontWeight: '600', marginBottom: '24px',
+          }}>
+            <ArrowLeft size={15} /> Back to Calls
           </Link>
 
-          {/* Header + Analyse Button */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
-            <div>
-              <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#1a1a1a', margin: '0 0 6px', letterSpacing: '-0.02em' }}>
+          {/* ── Header ── */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '8px' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <h1 style={{ fontSize: '22px', fontWeight: '800', color: '#0f172a', margin: '0 0 6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <PhoneCall size={18} style={{ marginRight: '8px', color: '#6366f1', verticalAlign: 'middle' }} />
                 {call.originalFileName}
               </h1>
-              <p style={{ fontSize: '13px', color: '#8a8480', margin: 0 }}>
-                Uploaded {new Date(call.createdAt).toLocaleString()} · {call.fileSizeMB} MB
-                {call.durationSeconds && ` · ${Math.floor(call.durationSeconds / 60)}m ${call.durationSeconds % 60}s`}
-              </p>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '13px', color: '#64748b' }}>
+                <span>📅 {new Date(call.createdAt).toLocaleString()}</span>
+                {call.fileSizeMB && <span>💾 {call.fileSizeMB} MB</span>}
+                {call.durationSeconds && <span>⏱ {fmt(call.durationSeconds)}</span>}
+                {call.detectedLanguage && <span>🌐 {call.detectedLanguage.toUpperCase()}</span>}
+              </div>
             </div>
 
-            {/* Analyse Now button */}
-            {(needsAnalysis || isProcessing) && (
-              <button
-                onClick={handleAnalyse}
-                disabled={isProcessing}
-                style={{
+            {/* Action buttons */}
+            <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+              {isAdmin && isCompleted && (
+                <button onClick={handleReanalyse} disabled={triggering} style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '10px 16px', borderRadius: '10px', fontSize: '13px',
+                  fontWeight: '600', cursor: triggering ? 'not-allowed' : 'pointer',
+                  background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0',
+                  fontFamily: 'inherit',
+                }}>
+                  <RotateCcw size={14} /> Re-analyse
+                </button>
+              )}
+              {(isPending || isFailed) && !triggering && (
+                <button onClick={handleTrigger} style={{
                   display: 'flex', alignItems: 'center', gap: '8px',
-                  padding: '12px 24px', borderRadius: '14px',
-                  background: isProcessing ? '#f0f0f0' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                  color: isProcessing ? '#888' : 'white',
-                  border: 'none', cursor: isProcessing ? 'not-allowed' : 'pointer',
-                  fontSize: '14px', fontWeight: '700', fontFamily: 'inherit',
-                  boxShadow: isProcessing ? 'none' : '0 4px 14px rgba(99,102,241,0.3)',
-                }}
-              >
-                {isProcessing ? (
-                  <><Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /> Analysing...</>
-                ) : (
-                  <><Zap size={16} /> Analyse Now</>
-                )}
-              </button>
-            )}
+                  padding: '10px 20px', borderRadius: '10px', fontSize: '13px',
+                  fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit',
+                  background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                  color: '#fff', border: 'none',
+                  boxShadow: '0 4px 14px rgba(99,102,241,0.35)',
+                }}>
+                  <Zap size={15} /> Trigger Analysis
+                </button>
+              )}
+              {isProcessing && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  padding: '10px 18px', borderRadius: '10px',
+                  background: '#eff6ff', color: '#2563eb', fontSize: '13px', fontWeight: '600',
+                }}>
+                  <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                  Analysing…
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Status banner */}
+          {/* ── Status + flags row ── */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '24px' }}>
+            <Badge label={call.status.charAt(0).toUpperCase() + call.status.slice(1)} style={{ bg: statusSt.bg, color: statusSt.color, background: statusSt.bg, borderColor: statusSt.color + '44' }} />
+            {sentSt && <Badge label={sentiment} style={{ background: sentSt.bg, color: sentSt.color, borderColor: sentSt.border }} />}
+            {call.followUpRequired && <Badge label="Follow-up Required" style={{ background: '#fef3c7', color: '#92400e', borderColor: '#fde68a' }} />}
+          </div>
+
+          {/* ── Status banners ── */}
           {isProcessing && (
-            <div style={{
-              marginBottom: '20px', padding: '16px 20px', borderRadius: '14px',
-              background: '#eff6ff', border: '1px solid #bfdbfe',
-              display: 'flex', alignItems: 'center', gap: '12px',
-            }}>
-              <Loader size={18} style={{ animation: 'spin 1s linear infinite', color: '#2563eb' }} />
+            <div style={{ marginBottom: '20px', padding: '14px 18px', borderRadius: '12px', background: '#eff6ff', border: '1px solid #bfdbfe', display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <Loader size={16} style={{ animation: 'spin 1s linear infinite', color: '#2563eb', flexShrink: 0 }} />
               <span style={{ fontSize: '14px', color: '#1e40af', fontWeight: '600' }}>
-                AI analysis is in progress. This page will update automatically when complete.
+                AI pipeline is running (Whisper → Translation → GPT-4o). This page refreshes automatically every 5 seconds.
               </span>
             </div>
           )}
-
-          {call.status === 'pending' && !analysing && (
-            <div style={{
-              marginBottom: '20px', padding: '16px 20px', borderRadius: '14px',
-              background: '#fffbeb', border: '1px solid #fde68a',
-              fontSize: '14px', color: '#92400e', fontWeight: '600',
-            }}>
-              ⏳ This call has not been analysed yet. Click "Analyse Now" to start AI processing.
+          {isFailed && call.errorMessage && (
+            <div style={{ marginBottom: '20px', padding: '14px 18px', borderRadius: '12px', background: '#fef2f2', border: '1px solid #fecaca', display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <XCircle size={16} color="#dc2626" style={{ flexShrink: 0 }} />
+              <span style={{ fontSize: '14px', color: '#991b1b', fontWeight: '600' }}>{call.errorMessage}</span>
+            </div>
+          )}
+          {isPending && !triggering && (
+            <div style={{ marginBottom: '20px', padding: '14px 18px', borderRadius: '12px', background: '#fffbeb', border: '1px solid #fde68a', fontSize: '14px', color: '#92400e', fontWeight: '600' }}>
+              ⏳ This call has not been analysed yet. Click "Trigger Analysis" to start.
             </div>
           )}
 
-          {call.status === 'failed' && !analysing && (
-            <div style={{
-              marginBottom: '20px', padding: '16px 20px', borderRadius: '14px',
-              background: '#fef2f2', border: '1px solid #fecaca',
-              fontSize: '14px', color: '#991b1b', fontWeight: '600',
-            }}>
-              ❌ Processing failed{call.errorMessage ? `: ${call.errorMessage}` : ''}. You can retry by clicking "Analyse Now".
-            </div>
-          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-          {/* ── Analysis Results ────────────────────────── */}
-          {call.status === 'completed' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              {/* Lead Info Card */}
-              <div style={{ background: 'white', border: '1px solid #e8e3da', borderRadius: '20px', padding: '24px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
-                  {[
-                    { label: 'Student', value: call.studentName },
-                    { label: 'Counsellor', value: call.counsellorName },
-                    { label: 'Course Interest', value: call.courseInterest },
-                    { label: 'City', value: call.studentCity },
-                    { label: 'Sentiment', value: call.sentiment, color: sentimentColor[call.sentiment] },
-                    { label: 'Lead Score', value: call.leadScore != null ? `${call.leadScore}/10` : null, large: true },
-                    { label: 'Follow-up Date', value: call.followUpDate },
-                    { label: 'Language', value: call.detectedLanguage?.toUpperCase() },
-                  ].map(item => (
-                    <div key={item.label}>
-                      <p style={{ fontSize: '11px', color: '#8a8480', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 4px' }}>{item.label}</p>
-                      <p style={{
-                        fontWeight: '700', color: item.color || '#1a1a1a', margin: 0,
-                        fontSize: item.large ? '22px' : '14px',
-                      }}>
-                        {item.value || '—'}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            {/* ── Audio Player ── */}
+            <Card>
+              <CardTitle><PhoneCall size={15} color="#6366f1" /> Audio Recording</CardTitle>
+              <AudioPlayer src={getCallStreamUrl(id)} fileName={call.originalFileName} />
+            </Card>
 
-              {/* Key Concerns */}
-              {call.keyConcerns?.length > 0 && (
-                <div style={{ background: 'white', border: '1px solid #e8e3da', borderRadius: '20px', padding: '24px' }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1a1a1a', margin: '0 0 12px' }}>Key Concerns</h3>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                    {call.keyConcerns.map((c, i) => (
-                      <span key={i} style={{
-                        padding: '6px 14px', borderRadius: '10px', fontSize: '13px',
-                        background: '#fef3c7', color: '#92400e', fontWeight: '600',
-                      }}>
-                        {c}
-                      </span>
-                    ))}
+            {/* ── Analysis Results (only when completed) ── */}
+            {isCompleted && (
+              <>
+                {/* Lead Info Grid */}
+                <Card>
+                  <CardTitle><User size={15} color="#6366f1" /> Lead Information</CardTitle>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '20px' }}>
+                    <MetaField label="Student" value={call.studentName} />
+                    <MetaField label="Counsellor" value={call.counsellorName} />
+                    <MetaField label="Course Interested" value={call.courseInterest} />
+                    <MetaField label="City" value={call.studentCity} />
+                    <MetaField label="Lead Score" value={call.leadScore != null ? `${call.leadScore} / 10` : null} large color="#6366f1" />
+                    <MetaField label="Sentiment" value={sentiment}
+                      color={sentSt?.color} />
+                    <MetaField label="Follow-up Date" value={call.followUpDate} />
+                    <MetaField label="Language" value={call.detectedLanguage?.toUpperCase()} />
                   </div>
-                </div>
-              )}
+                </Card>
 
-              {/* AI Summary */}
-              {call.callSummary && (
-                <div style={{ background: 'white', border: '1px solid #e8e3da', borderRadius: '20px', padding: '24px' }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1a1a1a', margin: '0 0 12px' }}>AI Summary</h3>
-                  <p style={{ fontSize: '14px', color: '#4b5563', lineHeight: 1.7, margin: 0 }}>{call.callSummary}</p>
-                </div>
-              )}
+                {/* Scores */}
+                <Card>
+                  <CardTitle><TrendingUp size={15} color="#6366f1" /> Performance Scores</CardTitle>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <ScoreBar label="Communication Score"    value={scores.communication} />
+                    <ScoreBar label="Engagement Score"       value={scores.engagement} />
+                    <ScoreBar label="Counsellor Confidence"  value={scores.confidence} />
+                    <ScoreBar label="Objection Handling"     value={scores.objection} />
+                    <ScoreBar label="Script Compliance"      value={scores.script} />
+                    {call.closingProbability != null && (
+                      <ScoreBar label="Closing Probability (%)" value={call.closingProbability} max={100} />
+                    )}
+                    {call.leadScore != null && (
+                      <ScoreBar label="Lead Score" value={call.leadScore} />
+                    )}
+                  </div>
+                </Card>
 
-              {/* Performance Scores */}
-              <div style={{ background: 'white', border: '1px solid #e8e3da', borderRadius: '20px', padding: '24px' }}>
-                <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1a1a1a', margin: '0 0 16px' }}>Counsellor Performance Scores</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  {scoreItems.map(({ label, value }) => (
-                    <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                      <span style={{ fontSize: '13px', color: '#6b6560', width: '160px', flexShrink: 0 }}>{label}</span>
-                      <div style={{ flex: 1, background: '#f0ece6', borderRadius: '50px', height: '8px' }}>
-                        <div style={{
-                          width: value ? `${value * 10}%` : '0%', height: '8px', borderRadius: '50px',
-                          background: scoreColor(value),
-                          transition: 'width 0.6s ease',
-                        }} />
+                {/* Key Concerns + Flags */}
+                {(call.keyConcerns?.length > 0 || call.feesIssue || call.placementConcern || call.timingConcern || call.parentConcern) && (
+                  <Card>
+                    <CardTitle><AlertTriangle size={15} color="#f59e0b" /> Concerns</CardTitle>
+                    {call.keyConcerns?.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+                        {call.keyConcerns.map((c, i) => (
+                          <span key={i} style={{ padding: '6px 14px', borderRadius: '10px', fontSize: '13px', background: '#fef3c7', color: '#92400e', fontWeight: '600', border: '1px solid #fde68a' }}>{c}</span>
+                        ))}
                       </div>
-                      <span style={{ fontSize: '14px', fontWeight: '800', color: '#1a1a1a', width: '32px', textAlign: 'right' }}>
-                        {value ?? '—'}
-                      </span>
+                    )}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      <ConcernChip label="Fees Issue"          active={!!call.feesIssue} />
+                      <ConcernChip label="Placement Concern"   active={!!call.placementConcern} />
+                      <ConcernChip label="Timing Concern"      active={!!call.timingConcern} />
+                      <ConcernChip label="Parent Concern"      active={!!call.parentConcern} />
                     </div>
-                  ))}
-                </div>
-              </div>
+                  </Card>
+                )}
 
-              {/* Transcript */}
-              {call.transcriptEnglish && (
-                <div style={{ background: 'white', border: '1px solid #e8e3da', borderRadius: '20px', padding: '24px' }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1a1a1a', margin: '0 0 12px' }}>Transcript (English)</h3>
-                  <pre style={{
-                    fontSize: '13px', color: '#4b5563', lineHeight: 1.7, whiteSpace: 'pre-wrap',
-                    fontFamily: 'inherit', margin: 0, maxHeight: '400px', overflowY: 'auto',
-                    padding: '16px', background: '#f8f7f4', borderRadius: '12px',
-                  }}>
-                    {call.transcriptEnglish}
-                  </pre>
-                </div>
-              )}
-            </div>
-          )}
+                {/* Call Summary */}
+                {call.callSummary && (
+                  <Card>
+                    <CardTitle><MessageSquare size={15} color="#6366f1" /> AI Call Summary</CardTitle>
+                    <p style={{ fontSize: '14px', color: '#475569', lineHeight: 1.8, margin: 0 }}>{call.callSummary}</p>
+                  </Card>
+                )}
+
+                {/* Transcript */}
+                {hasTranscript && (
+                  <Card>
+                    <CardTitle><FileText size={15} color="#6366f1" /> Transcript</CardTitle>
+
+                    {/* Tab switcher — only show if translated */}
+                    {isTranslated && (
+                      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                        {['original', 'english'].map((tab) => (
+                          <button key={tab} onClick={() => setActiveTab(tab)} style={{
+                            padding: '7px 18px', borderRadius: '8px', fontSize: '13px',
+                            fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit',
+                            border: 'none',
+                            background: activeTab === tab ? '#6366f1' : '#f1f5f9',
+                            color: activeTab === tab ? '#fff' : '#64748b',
+                          }}>
+                            {tab === 'original' ? `Original (${call.detectedLanguage?.toUpperCase()})` : 'English'}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    <pre style={{
+                      fontSize: '13px', color: '#374151', lineHeight: 1.8,
+                      whiteSpace: 'pre-wrap', fontFamily: 'inherit',
+                      margin: 0, maxHeight: '420px', overflowY: 'auto',
+                      padding: '16px', background: '#f8fafc',
+                      borderRadius: '10px', border: '1px solid #e2e8f0',
+                    }}>
+                      {activeTab === 'english' && call.transcriptEnglish
+                        ? call.transcriptEnglish
+                        : (call.transcriptOriginal || call.transcriptEnglish || 'No transcript available.')}
+                    </pre>
+                  </Card>
+                )}
+              </>
+            )}
+
+            {/* Empty state for pending */}
+            {(isPending || isFailed) && !triggering && (
+              <Card style={{ textAlign: 'center', padding: '48px 24px' }}>
+                <Star size={40} color="#e2e8f0" style={{ marginBottom: '16px' }} />
+                <p style={{ fontSize: '15px', fontWeight: '700', color: '#94a3b8', margin: '0 0 8px' }}>
+                  {isFailed ? 'Analysis failed — retry to see results.' : 'No analysis yet.'}
+                </p>
+                <p style={{ fontSize: '13px', color: '#cbd5e1', margin: 0 }}>
+                  Click "Trigger Analysis" to run the AI pipeline.
+                </p>
+              </Card>
+            )}
+
+          </div>
         </div>
+      </main>
 
-        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-      </div>
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @media (max-width: 768px) { main { margin-left: 0 !important; padding: 16px !important; } }
+      `}</style>
     </div>
   );
 }

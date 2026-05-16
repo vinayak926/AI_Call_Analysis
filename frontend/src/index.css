@@ -1,3 +1,23 @@
+/* @import "tailwindcss";
+
+@layer base {
+  body {
+    @apply antialiased;
+    background-color: #FAF7F0;
+    color: #1a1a1a;
+  }
+}
+
+@layer components {
+  .stat-card {
+    @apply bg-white rounded-2xl border border-stone-200 p-6 shadow-sm hover:shadow-md transition-all duration-200;
+  }
+
+  .signal-badge {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium;
+  }
+} */
+
 @import "tailwindcss";
 
 @layer base {
@@ -15,5 +35,20 @@
 
   .signal-badge {
     @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium;
+  }
+}
+
+/*
+ * FIX: Tailwind v4 does not process md:ml-[240px] without a source/content
+ * config. Add the sidebar offset as a real CSS class instead.
+ * Usage: replace className="md:ml-[240px]" with className="sidebar-content"
+ */
+.sidebar-content {
+  margin-left: 0;
+}
+
+@media (min-width: 768px) {
+  .sidebar-content {
+    margin-left: 240px;
   }
 }

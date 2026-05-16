@@ -99,7 +99,7 @@ export default function RecordingsPage() {
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
       <Navbar />
-      <div className="md:ml-[240px]" style={{ flex: 1, background: '#f8f7f4', minHeight: '100vh' }}>
+      <div style={{ flex: 1, background: '#f8f7f4', minHeight: '100vh', marginLeft: '240px' }}>
         <div style={{ padding: '32px 40px', maxWidth: '900px', margin: '0 auto' }}>
 
           {/* ── Header ──────────────────────────────────── */}

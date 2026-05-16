@@ -52,7 +52,7 @@ export default function UploadAudioPage() {
     return (
         <div style={{ display: 'flex', minHeight: '100vh' }}>
             <Navbar />
-            <div className="md:ml-[240px]" style={{ flex: 1, background: "#f8fafc", minHeight: "100vh", padding: "40px 24px" }}>
+            <div style={{ flex: 1, background: "rgb(248,250,252)", minHeight: "100vh", padding: "40px 24px", marginLeft: "240px" }}>
             <div style={{ maxWidth: "520px", margin: "0 auto" }}>
                 <h1 style={{ fontSize: "24px", fontWeight: "800", color: "#0f172a", marginBottom: "8px" }}>Upload Audio Recording</h1>
                 <p style={{ fontSize: "14px", color: "#64748b", marginBottom: "32px" }}>Supported: MP3, WAV, M4A, OGG, WEBM — max 100 MB</p>
