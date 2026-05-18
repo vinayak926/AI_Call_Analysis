@@ -141,16 +141,15 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-    const allowedExtensions = [".mp3", ".wav", ".m4a", ".ogg", ".webm"];
+    const allowed = [".mp3", ".wav", ".m4a", ".ogg", ".webm"];
     const ext = path.extname(file.originalname).toLowerCase();
-    if (allowedExtensions.includes(ext)) {
+    if (allowed.includes(ext)) {
         cb(null, true);
     } else {
         cb(
-            Object.assign(
-                new Error("Only audio files (MP3, WAV, M4A, OGG, WEBM) are allowed."),
-                { status: 400 }
-            ),
+            Object.assign(new Error("Only MP3, WAV, M4A, OGG, and WEBM files are allowed."), {
+                status: 400,
+            }),
             false
         );
     }

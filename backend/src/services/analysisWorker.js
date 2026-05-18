@@ -14,6 +14,11 @@ const path = require("path");
 const OpenAI = require("openai");
 const AudioRecording = require("../models/AudioRecording");
 const CallAnalysis = require("../models/CallAnalysis");
+const User = require("../models/User");                             
+const { appendToExcel } = require("./excelExportService");
+const { preprocessAudio, cleanupProcessedFile } = require("./audioPreprocessService");
+const { sendAnalysisAlerts } = require("./notificationService");   
+
 
 // ── Lazy-initialised OpenAI client ────────────────────────────────
 // We defer creation so the module can be required before dotenv loads
@@ -289,12 +294,36 @@ async function processAudioRecording(audioRecordingId) {
 
     try {
         // ────────────────────────────────────────────────────────
-        // STEP 1 — Transcribe
+        // STEP 1 — Transcribe  Preprocess audio (noise reduction + normalise)
         // ────────────────────────────────────────────────────────
         callAnalysis.status = "transcribing";
         await callAnalysis.save();
 
-        const transcription = await transcribeAudio(recording.filePath);
+        let audioPathForWhisper = recording.filePath;
+        let cleanFilePath = null;
+
+        try {
+            const { cleanPath, durationSeconds } = await preprocessAudio(recording.filePath);
+            audioPathForWhisper = cleanPath;
+            cleanFilePath = cleanPath;
+
+            // Save duration onto the AudioRecording document
+            if (durationSeconds > 0) {
+                await AudioRecording.findByIdAndUpdate(audioRecordingId, {
+                    durationSeconds,
+                });
+            }
+        } catch (prepErr) {
+            // Preprocessing failed — fall back to raw file
+            // Whisper can still transcribe it, just without cleaning
+            console.warn("⚠️  Preprocessing failed, using raw file:", prepErr.message);
+            audioPathForWhisper = recording.filePath;
+        }
+
+        // ────────────────────────────────────────────────────────
+        // STEP 2 — Transcribe (was Step 1)
+        // ────────────────────────────────────────────────────────
+        const transcription = await transcribeAudio(audioPathForWhisper);
 
         callAnalysis.transcript = {
             originalText: transcription.originalText,
@@ -302,22 +331,6 @@ async function processAudioRecording(audioRecordingId) {
             translationRequired: false,
             englishText: null,
         };
-        await callAnalysis.save();
-
-        // ────────────────────────────────────────────────────────
-        // STEP 2 — Translate (if needed)
-        // ────────────────────────────────────────────────────────
-        callAnalysis.status = "translating";
-        await callAnalysis.save();
-
-        const translation = await translateToEnglish(
-            transcription.originalText,
-            transcription.detectedLanguage
-        );
-
-        callAnalysis.transcript.englishText = translation.englishText;
-        callAnalysis.transcript.translationRequired = translation.translationRequired;
-        callAnalysis.markModified("transcript");
         await callAnalysis.save();
 
         // ────────────────────────────────────────────────────────
@@ -368,7 +381,32 @@ async function processAudioRecording(audioRecordingId) {
             status: "analysed",
         });
 
+        try {
+            const uploaderDoc = await User.findById(recording.uploadedBy)
+                .select("fullName")
+                .lean();
+            const uploaderName = uploaderDoc?.fullName || "";
+            await appendToExcel(callAnalysis, recording, uploaderName);
+        } catch (excelErr) {
+            console.error("⚠️  Excel export failed (non-fatal):", excelErr.message);
+        }
+
+        // Clean up the processed audio file to save disk space
+        if (cleanFilePath) {
+            cleanupProcessedFile(cleanFilePath);
+        }
+
+        // ────────────────────────────────────────────────────────
+        // STEP 7 — Send auto-alert notifications
+        // Non-blocking: errors are caught inside sendAnalysisAlerts
+        // ────────────────────────────────────────────────────────
+        const notifyUploaderName = uploaderName || "";
+        sendAnalysisAlerts(callAnalysis, notifyUploaderName).catch((err) => {
+            console.error("⚠️  Alert dispatch error (non-fatal):", err.message);
+        });
+
         const elapsedSec = (processingTimeMs / 1000).toFixed(1);
+        
         console.log(`\n${"─".repeat(60)}`);
         console.log(`✅ Pipeline complete in ${elapsedSec}s`);
         console.log(`   Sentiment: ${analysis.sentiment} | Lead Score: ${analysis.lead_score}/10`);

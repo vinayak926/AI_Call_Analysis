@@ -176,6 +176,48 @@ const approveUser = async (req, res) => {
   }
 };
 
+// ─── UPDATE USER (Admin only) ─────────────────────────────────────
+// PATCH /api/auth/users/:id
+// Updates editable fields: fullName, phone, company, position, password
+const updateUser = async (req, res) => {
+  try {
+    const { fullName, phone, company, position, password } = req.body;
+
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ message: "User nahi mila." });
+    }
+
+    // Prevent editing super_admin by non-super_admin
+    if (
+      user.role === "super_admin" &&
+      req.user.role !== "super_admin"
+    ) {
+      return res.status(403).json({ message: "Super admin ko edit nahi kar sakte." });
+    }
+
+    // Apply updates
+    if (fullName !== undefined) user.fullName = fullName.trim();
+    if (phone !== undefined) user.phone = phone.trim();
+    if (company !== undefined) user.company = company.trim();
+    if (position !== undefined) user.position = position.trim();
+
+    // Password change — hash is handled by the User model pre-save hook
+    if (password && password.length >= 8) {
+      user.password = password;
+    }
+
+    await user.save();
+
+    const updated = user.toObject();
+    delete updated.password;
+
+    res.status(200).json({ message: "User updated!", user: updated });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
 // ─── CHANGE USER ROLE (Admin only) ───────────────────────
 // PATCH /api/auth/role/:id
 const changeRole = async (req, res) => {
@@ -239,6 +281,7 @@ module.exports = {
   adminLogin,
   getAllUsers,
   approveUser,
+  updateUser,
   changeRole,
   getMe,
   deleteUser,

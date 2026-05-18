@@ -7,6 +7,7 @@ const {
   adminLogin,
   getAllUsers,
   approveUser,
+  updateUser,
   changeRole,
   getMe,
   deleteUser,
@@ -25,6 +26,7 @@ router.get("/me", protect, getMe);
 router.get("/users", protect, adminOnly, getAllUsers);
 router.patch("/approve/:id", protect, adminOnly, approveUser);
 router.patch("/role/:id", protect, adminOnly, changeRole);
+router.patch("/users/:id", protect, adminOnly, updateUser);
 router.delete("/users/:id", protect, adminOnly, deleteUser);
 
 module.exports = router;

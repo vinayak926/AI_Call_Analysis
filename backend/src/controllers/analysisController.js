@@ -185,10 +185,10 @@ const getAllAnalyses = async (req, res) => {
     try {
         const isAdmin = ["super_admin", "company_admin"].includes(req.user.role);
 
-        // Build filter
-        const filter = { status: "completed" };
+        // ── Base filter ───────────────────────────────────────────
+        const filter = {};
 
-        // Non-admins: only their own recordings
+        // Non-admins only see their own recordings
         if (!isAdmin) {
             const userRecordingIds = await AudioRecording.find({ uploadedBy: req.user._id })
                 .select("_id")
@@ -196,36 +196,133 @@ const getAllAnalyses = async (req, res) => {
             filter.audioRecordingId = { $in: userRecordingIds.map((r) => r._id) };
         }
 
-        // Optional query filters
-        if (req.query.sentiment) {
+        // ── Status filter ─────────────────────────────────────────
+        // Default to "completed" unless caller explicitly passes status=all
+        if (req.query.status && req.query.status !== "all") {
+            filter.status = req.query.status;
+        } else if (!req.query.status) {
+            filter.status = "completed";
+        }
+
+        // ── Keyword / text search ─────────────────────────────────
+        // Searches: studentName, counsellorName, courseInterested,
+        //           city, keyConcerns, callSummary
+        // Example: ?keyword=fees
+        if (req.query.keyword && req.query.keyword.trim()) {
+            filter.$text = { $search: req.query.keyword.trim() };
+        }
+
+        // ── Sentiment filter ──────────────────────────────────────
+        // Example: ?sentiment=Positive
+        if (req.query.sentiment && req.query.sentiment !== "all") {
             filter.sentiment = req.query.sentiment;
         }
-        if (req.query.minScore) {
-            filter.leadScore = { $gte: parseInt(req.query.minScore, 10) };
+
+        // ── Lead score range ──────────────────────────────────────
+        // Example: ?minScore=7&maxScore=10
+        if (req.query.minScore || req.query.maxScore) {
+            filter.leadScore = {};
+            if (req.query.minScore) {
+                filter.leadScore.$gte = parseInt(req.query.minScore, 10);
+            }
+            if (req.query.maxScore) {
+                filter.leadScore.$lte = parseInt(req.query.maxScore, 10);
+            }
         }
-        if (req.query.maxScore) {
-            filter.leadScore = {
-                ...filter.leadScore,
-                $lte: parseInt(req.query.maxScore, 10),
+
+        // ── Counsellor name filter ────────────────────────────────
+        // Example: ?counsellor=Priya
+        // Uses case-insensitive partial match (regex)
+        if (req.query.counsellor && req.query.counsellor.trim()) {
+            filter.counsellorName = {
+                $regex: req.query.counsellor.trim(),
+                $options: "i",
             };
         }
-        if (req.query.status) {
-            filter.status = req.query.status;
+
+        // ── Student name filter ───────────────────────────────────
+        // Example: ?student=Rahul
+        if (req.query.student && req.query.student.trim()) {
+            filter.studentName = {
+                $regex: req.query.student.trim(),
+                $options: "i",
+            };
         }
 
-        const page = parseInt(req.query.page, 10) || 1;
-        const limit = parseInt(req.query.limit, 10) || 25;
+        // ── Course filter ─────────────────────────────────────────
+        // Example: ?course=MBA
+        if (req.query.course && req.query.course.trim()) {
+            filter.courseInterested = {
+                $regex: req.query.course.trim(),
+                $options: "i",
+            };
+        }
+
+        // ── City filter ───────────────────────────────────────────
+        // Example: ?city=Ahmedabad
+        if (req.query.city && req.query.city.trim()) {
+            filter.city = {
+                $regex: req.query.city.trim(),
+                $options: "i",
+            };
+        }
+
+        // ── Follow-up filter ──────────────────────────────────────
+        // Example: ?followUp=true
+        if (req.query.followUp === "true") {
+            filter.followUpRequired = true;
+        }
+
+        // ── Interested filter ─────────────────────────────────────
+        // Example: ?interested=true
+        if (req.query.interested === "true") {
+            filter.interested = true;
+        }
+
+        // ── Date range filter ─────────────────────────────────────
+        // Example: ?dateFrom=2026-01-01&dateTo=2026-06-30
+        if (req.query.dateFrom || req.query.dateTo) {
+            filter.createdAt = {};
+            if (req.query.dateFrom) {
+                filter.createdAt.$gte = new Date(req.query.dateFrom);
+            }
+            if (req.query.dateTo) {
+                // Include the full end day by going to end of that date
+                const end = new Date(req.query.dateTo);
+                end.setHours(23, 59, 59, 999);
+                filter.createdAt.$lte = end;
+            }
+        }
+
+        // ── Pagination ────────────────────────────────────────────
+        const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+        const limit = Math.min(parseInt(req.query.limit, 10) || 25, 100); // cap at 100
         const skip = (page - 1) * limit;
 
+        // ── Sort ──────────────────────────────────────────────────
+        // If keyword search is active, sort by text relevance score first
+        // Otherwise sort by newest first
+        let sortOption = { createdAt: -1 };
+        if (req.query.keyword && req.query.keyword.trim()) {
+            sortOption = { score: { $meta: "textScore" }, createdAt: -1 };
+        }
+
+        // ── Query ─────────────────────────────────────────────────
+        const selectFields = req.query.keyword
+            ? { score: { $meta: "textScore" } }
+            : {};
+
         const [analyses, total] = await Promise.all([
-            CallAnalysis.find(filter)
+            CallAnalysis.find(filter, selectFields)
                 .populate("audioRecordingId", "originalFileName title uploadedBy createdAt")
-                .sort({ createdAt: -1 })
+                .sort(sortOption)
                 .skip(skip)
-                .limit(limit),
+                .limit(limit)
+                .lean(),
             CallAnalysis.countDocuments(filter),
         ]);
 
+        // ── Response ──────────────────────────────────────────────
         res.status(200).json({
             analyses,
             pagination: {
@@ -233,9 +330,27 @@ const getAllAnalyses = async (req, res) => {
                 limit,
                 total,
                 totalPages: Math.ceil(total / limit),
+                hasNextPage: page < Math.ceil(total / limit),
+                hasPrevPage: page > 1,
+            },
+            appliedFilters: {
+                keyword: req.query.keyword || null,
+                sentiment: req.query.sentiment || null,
+                counsellor: req.query.counsellor || null,
+                student: req.query.student || null,
+                course: req.query.course || null,
+                city: req.query.city || null,
+                minScore: req.query.minScore || null,
+                maxScore: req.query.maxScore || null,
+                followUp: req.query.followUp || null,
+                interested: req.query.interested || null,
+                dateFrom: req.query.dateFrom || null,
+                dateTo: req.query.dateTo || null,
+                status: filter.status || null,
             },
         });
     } catch (error) {
+        console.error("Search analyses error:", error);
         res.status(500).json({ message: "Server error.", error: error.message });
     }
 };

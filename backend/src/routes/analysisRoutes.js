@@ -97,4 +97,24 @@ router.post(
     analysisController.reanalyse
 );
 
+// ── Download the master Excel report (Admin only) ─────────────────
+router.get("/report/download-excel", adminOnly, (req, res) => {
+    const { EXPORT_FILE } = require("../services/excelExportService");
+    const fs = require("fs");
+
+    if (!fs.existsSync(EXPORT_FILE)) {
+        return res.status(404).json({
+            message: "No Excel report found yet. Analyse at least one call first.",
+        });
+    }
+
+    const filename = `sales_call_report_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.sendFile(EXPORT_FILE);
+});
+
 module.exports = router;

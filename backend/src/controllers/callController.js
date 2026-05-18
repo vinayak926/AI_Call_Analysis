@@ -91,59 +91,48 @@
 
 
 // controllers/callController.js
-const Call = require("../models/Call");
+const AudioRecording = require("../models/AudioRecording");
+const CallAnalysis = require("../models/CallAnalysis");
 const path = require("path");
 const fs = require("fs");
 
-// Lazy import to avoid circular require issues at module load time
+// Lazy import to avoid circular require issues
 function getWorker() {
-    return require("../services/callAnalysisWorker");
+    return require("../services/analysisWorker");
 }
 
-// ── Shared admin-role helper ──────────────────────────────────────
-// BUG FIX: Original getCalls/getCallById used "company_admin" but
-// authMiddleware.adminOnly and the User model both use "company_admin".
-// However, the User model enum is ["counselor","company_admin","super_admin"].
-// The call controller used "super_admin" and "company_admin" consistently
-// which is correct — the real mismatch was that the admin seeder in
-// server.js set role: "super_admin" so the seeded admin CAN see all calls.
-// Unified helper keeps both in one place so future changes are easy.
 const isAdminUser = (user) =>
     ["super_admin", "company_admin"].includes(user.role);
 
 // ── POST /api/calls/upload ─────────────────────────────────────────
+// Now creates an AudioRecording (unified model) instead of Call
 const uploadCalls = async (req, res) => {
     try {
         if (!req.files || req.files.length === 0) {
             return res.status(400).json({ message: "No audio files received." });
         }
 
-        const createdCalls = [];
+        const created = [];
 
         for (const file of req.files) {
             const fileSizeMB = +(file.size / (1024 * 1024)).toFixed(2);
 
-            const call = await Call.create({
+            const recording = await AudioRecording.create({
                 uploadedBy: req.user._id,
                 originalFileName: file.originalname,
                 storedFileName: file.filename,
-                // BUG FIX: store a relative path so the record stays valid even
-                // if the server is restarted from a different working directory.
                 filePath: file.path,
                 fileSizeMB,
                 mimeType: file.mimetype,
                 status: "pending",
             });
 
-            createdCalls.push(call);
-
-            // TODO (Phase 2): enqueue into Bull processing queue
-            // processingQueue.add({ callId: call._id });
+            created.push(recording);
         }
 
         res.status(201).json({
-            message: `${createdCalls.length} file(s) uploaded successfully. Processing will begin shortly.`,
-            calls: createdCalls,
+            message: `${created.length} file(s) uploaded successfully.`,
+            calls: created,   // keep key as "calls" so frontend doesn't break
         });
     } catch (error) {
         console.error("Upload error:", error);
@@ -156,11 +145,11 @@ const getCalls = async (req, res) => {
     try {
         const filter = isAdminUser(req.user) ? {} : { uploadedBy: req.user._id };
 
-        const calls = await Call.find(filter)
+        const recordings = await AudioRecording.find(filter)
             .populate("uploadedBy", "fullName email")
             .sort({ createdAt: -1 });
 
-        res.status(200).json({ calls });
+        res.status(200).json({ calls: recordings });
     } catch (error) {
         res.status(500).json({ message: "Server error.", error: error.message });
     }
@@ -169,74 +158,71 @@ const getCalls = async (req, res) => {
 // ── GET /api/calls/:id ─────────────────────────────────────────────
 const getCallById = async (req, res) => {
     try {
-        const call = await Call.findById(req.params.id).populate(
-            "uploadedBy",
-            "fullName email"
-        );
+        const recording = await AudioRecording.findById(req.params.id)
+            .populate("uploadedBy", "fullName email");
 
-        if (!call) return res.status(404).json({ message: "Call not found." });
+        if (!recording) return res.status(404).json({ message: "Call not found." });
 
-        // BUG FIX: original compared call.uploadedBy._id but after .populate()
-        // uploadedBy is a full object; before populate it's just an ObjectId.
-        // Using toString() on both sides handles both cases safely.
         if (
             !isAdminUser(req.user) &&
-            call.uploadedBy._id.toString() !== req.user._id.toString()
+            recording.uploadedBy._id.toString() !== req.user._id.toString()
         ) {
             return res.status(403).json({ message: "Access denied." });
         }
 
-        res.status(200).json({ call });
+        res.status(200).json({ call: recording });
     } catch (error) {
         res.status(500).json({ message: "Server error.", error: error.message });
     }
 };
 
 // ── GET /api/calls/:id/status ──────────────────────────────────────
-// Lightweight polling endpoint — used by CallDetailPage every 5 s
 const getCallStatus = async (req, res) => {
     try {
-        const call = await Call.findById(req.params.id).select(
-            "status errorMessage"
-        );
-        if (!call) return res.status(404).json({ message: "Call not found." });
-        res
-            .status(200)
-            .json({ status: call.status, errorMessage: call.errorMessage });
+        const recording = await AudioRecording.findById(req.params.id)
+            .select("status");
+
+        if (!recording) return res.status(404).json({ message: "Call not found." });
+
+        // Also fetch analysis status if it exists
+        const analysis = await CallAnalysis.findOne({ audioRecordingId: req.params.id })
+            .select("status errorMessage processingTimeMs");
+
+        res.status(200).json({
+            status: recording.status,
+            analysisStatus: analysis?.status || "not_started",
+            errorMessage: analysis?.errorMessage || null,
+            processingTimeMs: analysis?.processingTimeMs || null,
+        });
     } catch (error) {
         res.status(500).json({ message: "Server error.", error: error.message });
     }
 };
 
-// ── POST /api/calls/:id/analyse ───────────────────────────────────
-// Trigger AI analysis on a Call document (async, non-blocking)
+// ── POST /api/calls/:id/analyse ────────────────────────────────────
+// Delegates to analysisWorker (unified pipeline)
 const analyseCall = async (req, res) => {
     try {
-        const call = await Call.findById(req.params.id);
-        if (!call) return res.status(404).json({ message: "Call not found." });
+        const recording = await AudioRecording.findById(req.params.id);
+        if (!recording) return res.status(404).json({ message: "Call not found." });
 
-        if (!isAdminUser(req.user) && call.uploadedBy.toString() !== req.user._id.toString()) {
+        if (!isAdminUser(req.user) && recording.uploadedBy.toString() !== req.user._id.toString()) {
             return res.status(403).json({ message: "Access denied." });
         }
 
-        if (call.status === "processing") {
-            return res.status(409).json({ message: "This call is already being processed." });
+        const existing = await CallAnalysis.findOne({ audioRecordingId: req.params.id });
+        if (existing && ["transcribing", "translating", "analysing"].includes(existing.status)) {
+            return res.status(409).json({ message: "Already being processed." });
         }
 
-        // Mark as processing immediately
-        call.status = "processing";
-        call.errorMessage = null;
-        await call.save();
-
-        // Fire the call-specific worker async (don't await)
-        const { processCall } = getWorker();
-        processCall(call._id.toString()).catch((err) => {
-            console.error(`Call analysis failed for ${call._id}:`, err.message);
+        const { processAudioRecording } = getWorker();
+        processAudioRecording(req.params.id).catch((err) => {
+            console.error(`Call analysis failed for ${req.params.id}:`, err.message);
         });
 
         res.status(202).json({
             message: "Analysis started. Poll /api/calls/:id/status for updates.",
-            callId: call._id,
+            callId: req.params.id,
         });
     } catch (error) {
         console.error("analyseCall error:", error);
@@ -244,37 +230,27 @@ const analyseCall = async (req, res) => {
     }
 };
 
-// ── POST /api/calls/:id/reanalyse (admin only) ─────────────────────
+// ── POST /api/calls/:id/reanalyse ──────────────────────────────────
 const reanalyseCall = async (req, res) => {
     try {
-        const call = await Call.findById(req.params.id);
-        if (!call) return res.status(404).json({ message: "Call not found." });
+        const recording = await AudioRecording.findById(req.params.id);
+        if (!recording) return res.status(404).json({ message: "Call not found." });
 
-        // Clear previous analysis fields
-        call.status = "processing";
-        call.errorMessage = null;
-        call.studentName = null;
-        call.counsellorName = null;
-        call.courseInterest = null;
-        call.studentCity = null;
-        call.keyConcerns = [];
-        call.sentiment = null;
-        call.leadScore = null;
-        call.callSummary = null;
-        call.transcriptOriginal = null;
-        call.transcriptEnglish = null;
-        call.detectedLanguage = null;
-        call.scores = {};
-        await call.save();
+        // Delete previous analysis so pipeline runs fresh
+        await CallAnalysis.deleteOne({ audioRecordingId: req.params.id });
 
-        const { processCall } = getWorker();
-        processCall(call._id.toString()).catch((err) => {
-            console.error(`Re-analysis failed for ${call._id}:`, err.message);
+        // Reset recording status
+        recording.status = "pending";
+        await recording.save();
+
+        const { processAudioRecording } = getWorker();
+        processAudioRecording(req.params.id).catch((err) => {
+            console.error(`Re-analysis failed for ${req.params.id}:`, err.message);
         });
 
         res.status(202).json({
             message: "Re-analysis started. Previous results cleared.",
-            callId: call._id,
+            callId: req.params.id,
         });
     } catch (error) {
         console.error("reanalyseCall error:", error);

@@ -61,6 +61,19 @@ const { protect, adminOnly } = require("../middleware/authMiddleware");
 const callController = require("../controllers/callController");
 const { analyseCall, reanalyseCall } = callController;
 
+// ── MIME type map for correct browser audio playback ─────────────
+const MIME_BY_EXT = {
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".m4a": "audio/mp4",
+    ".ogg": "audio/ogg",
+    ".webm": "audio/webm",
+};
+function getMimeType(filePath, fallback = "audio/mpeg") {
+    const ext = path.extname(filePath || "").toLowerCase();
+    return MIME_BY_EXT[ext] || fallback;
+}
+
 
 // ── BUG FIX: Upload directory ─────────────────────────────────────
 // Original used process.env.UPLOAD_DIR || "./uploads" which resolves
@@ -145,9 +158,9 @@ router.get("/:id/status", protect, callController.getCallStatus);
 // GET /api/calls/:id/stream
 router.get("/:id/stream", protect, async (req, res) => {
     try {
-        const Call = require("../models/Call");
-        const c = await Call.findById(req.params.id).select("filePath mimeType uploadedBy");
-        if (!c) return res.status(404).json({ message: "Call not found." });
+        const AudioRecording = require("../models/AudioRecording");
+        const c = await AudioRecording.findById(id).select("filePath mimeType storedFileName");
+        if (!c) return res.status(404).json({ message: "Call not found" });
 
         const isAdmin = ["super_admin", "company_admin"].includes(req.user.role);
         if (!isAdmin && c.uploadedBy.toString() !== req.user._id.toString()) {
@@ -165,7 +178,7 @@ router.get("/:id/stream", protect, async (req, res) => {
         const stat = fs.statSync(absPath);
         const range = req.headers.range;
 
-        res.setHeader("Content-Type", c.mimeType || "audio/mpeg");
+        res.setHeader("Content-Type", getMimeType(c.filePath, c.mimeType));
         res.setHeader("Accept-Ranges", "bytes");
 
         if (range) {

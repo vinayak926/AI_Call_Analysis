@@ -77,8 +77,40 @@ const callAnalysisSchema = new mongoose.Schema(
 
 // Index for fast lookup by status, sentiment, and leadScore
 // Note: audioRecordingId already has a unique index from the schema definition
+// Note: audioRecordingId already has a unique index from the schema definition
 callAnalysisSchema.index({ status: 1 });
 callAnalysisSchema.index({ sentiment: 1 });
 callAnalysisSchema.index({ leadScore: 1 });
+
+// ── New indexes for search API ────────────────────────────────────
+callAnalysisSchema.index({ counsellorName: 1 });
+callAnalysisSchema.index({ courseInterested: 1 });
+callAnalysisSchema.index({ city: 1 });
+callAnalysisSchema.index({ followUpRequired: 1 });
+callAnalysisSchema.index({ createdAt: -1 });
+
+// Text index — powers keyword search across student name,
+// counsellor name, course, city, concerns, and call summary
+callAnalysisSchema.index(
+    {
+        studentName: "text",
+        counsellorName: "text",
+        courseInterested: "text",
+        city: "text",
+        keyConcerns: "text",
+        callSummary: "text",
+    },
+    {
+        name: "call_analysis_text_search",
+        weights: {
+            studentName: 10,   
+            counsellorName: 8,
+            courseInterested: 6,
+            city: 4,
+            keyConcerns: 3,
+            callSummary: 1,    
+        },
+    }
+);
 
 module.exports = mongoose.model("CallAnalysis", callAnalysisSchema, "call_analysis");

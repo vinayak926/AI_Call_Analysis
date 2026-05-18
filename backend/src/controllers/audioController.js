@@ -5,6 +5,22 @@ const fs = require("fs");
 const { v4: uuidv4 } = require("uuid");
 const AudioRecording = require("../models/AudioRecording");
 
+// ── MIME type map — browser needs the correct type to play audio ──
+// Multer stores whatever the OS/browser sends (unreliable for M4A).
+// We derive it from the file extension instead — always accurate.
+const MIME_BY_EXT = {
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".m4a": "audio/mp4",      
+    ".ogg": "audio/ogg",
+    ".webm": "audio/webm",
+};
+
+function getMimeType(filePath, fallback = "audio/mpeg") {
+    const ext = require("path").extname(filePath).toLowerCase();
+    return MIME_BY_EXT[ext] || fallback;
+}
+
 // ─────────────────────────────────────────────────────────────
 // POST /api/audio/upload
 // Upload one audio file
@@ -133,7 +149,8 @@ exports.streamAudio = async (req, res) => {
                 "Content-Range": `bytes ${start}-${end}/${fileSize}`,
                 "Accept-Ranges": "bytes",
                 "Content-Length": chunkSize,
-                "Content-Type": recording.mimeType || "audio/mpeg",
+                // "Content-Type": recording.mimeType || "audio/mpeg",
+                "Content-Type": getMimeType(recording.filePath, recording.mimeType),
             });
 
             fileStream.pipe(res);
@@ -141,7 +158,8 @@ exports.streamAudio = async (req, res) => {
             // ── Full file request ─────────────────────────────────
             res.writeHead(200, {
                 "Content-Length": fileSize,
-                "Content-Type": recording.mimeType || "audio/mpeg",
+                // "Content-Type": recording.mimeType || "audio/mpeg",
+                "Content-Type": getMimeType(recording.filePath, recording.mimeType),
                 "Accept-Ranges": "bytes",
             });
 
