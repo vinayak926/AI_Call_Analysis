@@ -8,6 +8,7 @@ import {
     Search, RefreshCw, Play, Pause, Trash2, Filter,
     Clock, CheckCircle, AlertTriangle, Loader,
 } from 'lucide-react';
+import NotificationBell from '../../components/NotificationBell';
 
 const ADMIN_NAV = [
     { path: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
@@ -86,9 +87,12 @@ export default function AdminRecordingsPage() {
                         <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#1a1a1a', letterSpacing: '-0.02em', margin: '0 0 4px' }}>All Recordings</h1>
                         <p style={{ color: '#8a8480', fontSize: '14px', margin: 0 }}>{recordings.length} audio files across all counsellors</p>
                     </div>
-                    <button onClick={fetchRecordings} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', background: 'white', border: '1px solid #e8e3da', borderRadius: '12px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#6b6560', fontFamily: 'inherit' }}>
-                        <RefreshCw size={14} style={loading ? { animation: 'spin 1s linear infinite' } : {}} /> Refresh
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <NotificationBell />
+                        <button onClick={fetchRecordings} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', background: 'white', border: '1px solid #e8e3da', borderRadius: '12px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#6b6560', fontFamily: 'inherit' }}>
+                            <RefreshCw size={14} style={loading ? { animation: 'spin 1s linear infinite' } : {}} /> Refresh
+                        </button>
+                    </div>
                 </div>
 
                 {/* Filters */}

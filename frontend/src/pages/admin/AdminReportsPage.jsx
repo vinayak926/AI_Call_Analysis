@@ -7,6 +7,7 @@ import {
     Download, RefreshCw, Filter, FileSpreadsheet,
     BarChart2, Calendar, User,
 } from 'lucide-react';
+import NotificationBell from '../../components/NotificationBell';
 
 const ADMIN_NAV = [
     { path: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
@@ -189,9 +190,12 @@ export default function AdminReportsPage() {
                         <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#1a1a1a', letterSpacing: '-0.02em', margin: '0 0 4px' }}>Reports</h1>
                         <p style={{ color: '#8a8480', fontSize: '14px', margin: 0 }}>Download full or per-counsellor reports in PDF & Excel</p>
                     </div>
-                    <button onClick={fetchAll} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', background: 'white', border: '1px solid #e8e3da', borderRadius: '12px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#6b6560', fontFamily: 'inherit' }}>
-                        <RefreshCw size={14} style={loading ? { animation: 'spin 1s linear infinite' } : {}} /> Refresh
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <NotificationBell />
+                        <button onClick={fetchAll} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', background: 'white', border: '1px solid #e8e3da', borderRadius: '12px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#6b6560', fontFamily: 'inherit' }}>
+                            <RefreshCw size={14} style={loading ? { animation: 'spin 1s linear infinite' } : {}} /> Refresh
+                        </button>
+                    </div>
                 </div>
 
                 {/* Filter Panel */}

@@ -252,11 +252,27 @@ function sanitiseAnalysis(raw) {
 
 async function diarizeSegments(segments, counsellorName, studentName) {
     if (!segments || segments.length === 0) return [];
-    console.log('  🎤 [Diarize] Assigning speaker labels to segments...');
-    const segmentText = segments.map((s, i) => `[${i}] ${s.text.trim()}`).join('\n');
+
+    const MAX_SEGMENTS = 80;
+
+    // Sample evenly if over the limit — pick every Nth segment
+    let sampled = segments;
+    let sampledIndices = segments.map((_, i) => i); // original index of each sampled segment
+    if (segments.length > MAX_SEGMENTS) {
+        const step = segments.length / MAX_SEGMENTS;
+        sampledIndices = Array.from({ length: MAX_SEGMENTS }, (_, i) => Math.min(Math.floor(i * step), segments.length - 1));
+        sampled = sampledIndices.map(i => segments[i]);
+        console.log(`  🎤 [Diarize] ${segments.length} segments → sampled ${sampled.length} evenly`);
+    } else {
+        console.log(`  🎤 [Diarize] Assigning speaker labels to ${segments.length} segments...`);
+    }
+
+    const segmentText = sampled.map((s, i) => `[${i}] ${s.text.trim()}`).join('\n');
+
     const response = await getOpenAI().chat.completions.create({
         model: GPT_MODEL,
         temperature: 0.1,
+        max_tokens: 1000,
         response_format: { type: 'json_object' },
         messages: [
             {
@@ -269,13 +285,27 @@ async function diarizeSegments(segments, counsellorName, studentName) {
             },
         ],
     });
+
     const raw = JSON.parse(response.choices[0].message.content.trim());
-    const labels = Array.isArray(raw.labels) ? raw.labels : [];
+    let labels = Array.isArray(raw.labels) ? raw.labels : [];
+
+    // Safety: pad missing labels with 'COUNSELLOR' if GPT returned fewer than expected
+    while (labels.length < sampled.length) {
+        labels.push('COUNSELLOR');
+    }
+
+    // Build a label map keyed by original segment index
+    const labelMap = {};
+    sampledIndices.forEach((origIdx, sampledIdx) => {
+        labelMap[origIdx] = labels[sampledIdx] === 'COUNSELLOR' ? 'COUNSELLOR' : 'STUDENT';
+    });
+
+    // For unsampled segments, inherit the label from the nearest sampled neighbour
     return segments.map((seg, i) => ({
         start: seg.start,
         end: seg.end,
         text: seg.text.trim(),
-        speaker: labels[i] === 'COUNSELLOR' ? 'COUNSELLOR' : 'STUDENT',
+        speaker: labelMap[i] ?? (labelMap[sampledIndices.reduce((prev, curr) => Math.abs(curr - i) < Math.abs(prev - i) ? curr : prev)] ?? 'COUNSELLOR'),
     }));
 }
 

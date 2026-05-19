@@ -231,43 +231,64 @@ async function sendAnalysisAlerts(callAnalysis, uploaderName = "") {
         // ── Alert 1: Hot Lead ─────────────────────────────────────
         if (a.leadScore >= HOT_LEAD_THRESHOLD && a.interested) {
             try {
+                await Notification.create({
+                    type: 'hot_lead',
+                    title: 'Hot Lead Detected',
+                    message: 'Hot Lead: ' + (a.studentName || 'Unknown') + ' — Score ' + a.leadScore + '/10',
+                    audioRecordingId: a.audioRecordingId || null,
+                    studentName: a.studentName || null,
+                    counsellorName: a.counsellorName || uploaderName || null,
+                    leadScore: a.leadScore || null,
+                    isRead: false,
+                });
+            } catch (dbErr) { console.error('Hot lead notification DB save failed:', dbErr.message); }
+            try {
                 const subject = `🔥 Hot Lead: ${a.studentName || "Unknown"} — Score ${a.leadScore}/10`;
                 await sendEmail({ to: adminEmails, subject, html: hotLeadEmail(a, uploaderName) });
                 alertsSent.push("hot-lead");
-                try {
-                    await Notification.create({ type: 'hot_lead', title: 'Hot Lead Detected', message: subject, audioRecordingId: a.audioRecordingId, studentName: a.studentName, counsellorName: a.counsellorName, leadScore: a.leadScore });
-                } catch (dbErr) { console.error("⚠️  Notification DB save failed (hot_lead):", dbErr.message); }
-            } catch (err) {
-                console.error("⚠️  Hot lead alert failed:", err.message);
-            }
+            } catch (err) { console.error("⚠️  Hot lead alert failed:", err.message); }
         }
 
         // ── Alert 2: Follow-up Required ───────────────────────────
         if (a.followUpRequired) {
             try {
+                await Notification.create({
+                    type: 'follow_up',
+                    title: 'Follow-up Required',
+                    message: 'Follow-up Required: ' + (a.studentName || 'Unknown') + ' — ' + (a.followUpDate || 'ASAP'),
+                    audioRecordingId: a.audioRecordingId || null,
+                    studentName: a.studentName || null,
+                    counsellorName: a.counsellorName || uploaderName || null,
+                    leadScore: a.leadScore || null,
+                    isRead: false,
+                });
+            } catch (dbErr) { console.error('Follow-up notification DB save failed:', dbErr.message); }
+            try {
                 const subject = `📅 Follow-up Required: ${a.studentName || "Unknown"} — ${a.followUpDate || "ASAP"}`;
                 await sendEmail({ to: adminEmails, subject, html: followUpEmail(a, uploaderName) });
                 alertsSent.push("follow-up");
-                try {
-                    await Notification.create({ type: 'follow_up', title: 'Follow-up Required', message: subject, audioRecordingId: a.audioRecordingId, studentName: a.studentName, counsellorName: a.counsellorName, leadScore: a.leadScore });
-                } catch (dbErr) { console.error("⚠️  Notification DB save failed (follow_up):", dbErr.message); }
-            } catch (err) {
-                console.error("⚠️  Follow-up alert failed:", err.message);
-            }
+            } catch (err) { console.error("⚠️  Follow-up alert failed:", err.message); }
         }
 
         // ── Alert 3: Poor Counsellor Performance ──────────────────
         if (a.communicationScore !== null && a.communicationScore <= POOR_QUALITY_THRESHOLD) {
             try {
+                await Notification.create({
+                    type: 'poor_performance',
+                    title: 'Poor Performance Alert',
+                    message: 'Poor Performance: ' + (a.counsellorName || uploaderName || 'Unknown') + ' — Communication Score ' + a.communicationScore + '/10',
+                    audioRecordingId: a.audioRecordingId || null,
+                    studentName: a.studentName || null,
+                    counsellorName: a.counsellorName || uploaderName || null,
+                    leadScore: a.leadScore || null,
+                    isRead: false,
+                });
+            } catch (dbErr) { console.error('Poor performance notification DB save failed:', dbErr.message); }
+            try {
                 const subject = `⚠️ Poor Performance: ${a.counsellorName || uploaderName || "Unknown"} — Score ${a.communicationScore}/10`;
                 await sendEmail({ to: adminEmails, subject, html: poorQualityEmail(a, uploaderName) });
                 alertsSent.push("poor-quality");
-                try {
-                    await Notification.create({ type: 'poor_performance', title: 'Poor Performance Alert', message: subject, audioRecordingId: a.audioRecordingId, studentName: a.studentName, counsellorName: a.counsellorName || uploaderName, leadScore: a.leadScore });
-                } catch (dbErr) { console.error("⚠️  Notification DB save failed (poor_performance):", dbErr.message); }
-            } catch (err) {
-                console.error("⚠️  Poor quality alert failed:", err.message);
-            }
+            } catch (err) { console.error("⚠️  Poor quality alert failed:", err.message); }
         }
 
         if (alertsSent.length) {

@@ -7,6 +7,7 @@ import {
   UserCheck, Trash2, UserPlus, X, CheckCircle, Clock,
   RefreshCw, Search, Pencil,
 } from 'lucide-react';
+import NotificationBell from '../../components/NotificationBell';
 
 const ADMIN_NAV = [
   { path: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
@@ -294,6 +295,7 @@ export default function AdminUsersPage() {
             <p style={{ color: '#8a8480', fontSize: '14px', margin: 0 }}>{stats.total} total · {stats.approved} approved · {stats.pending} pending approval</p>
           </div>
           <div style={{ display: 'flex', gap: '10px' }}>
+            <NotificationBell />
             <button onClick={fetchUsers} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', background: 'white', border: '1px solid #e8e3da', borderRadius: '12px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#6b6560', fontFamily: 'inherit' }}>
               <RefreshCw size={14} style={loading ? { animation: 'spin 1s linear infinite' } : {}} /> Refresh
             </button>
