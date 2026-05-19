@@ -204,7 +204,7 @@ export default function Login() {
                 type="email"
                 placeholder="Work email"
                 value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                onChange={(e) => { setFormData({ ...formData, email: e.target.value }); setError(''); }}
                 required
                 style={{
                   flex: 1, background: 'transparent',
@@ -229,7 +229,7 @@ export default function Login() {
                 type={showPassword ? 'text' : 'password'}
                 placeholder="Password"
                 value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                onChange={(e) => { setFormData({ ...formData, password: e.target.value }); setError(''); }}
                 required
                 style={{
                   flex: 1, background: 'transparent',
@@ -256,6 +256,24 @@ export default function Login() {
                 Forgot password?
               </button>
             </div>
+
+            {error && (
+              <div style={{
+                display: 'flex', alignItems: 'flex-start', gap: '10px',
+                background: '#fef2f2', border: '1px solid #fecaca',
+                borderRadius: '12px', padding: '12px 16px', marginBottom: '16px',
+              }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: '1px' }}>
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="12" y1="8" x2="12" y2="12"/>
+                  <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <div>
+                  <p style={{ margin: '0 0 2px', fontSize: '13px', fontWeight: '700', color: '#dc2626' }}>Login failed</p>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#991b1b', lineHeight: 1.4 }}>{error}</p>
+                </div>
+              </div>
+            )}
 
             {/* Sign in button */}
             <button

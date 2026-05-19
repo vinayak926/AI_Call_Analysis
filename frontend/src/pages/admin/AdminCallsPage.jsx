@@ -25,14 +25,13 @@ const STATUS_CFG = {
 const SENT_COLORS = { Positive: '#16a34a', Negative: '#dc2626', Neutral: '#d97706' };
 
 export default function AdminCallsPage() {
-    const [calls, setCalls] = useState([]);
+    const [allCalls, setAllCalls] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatus] = useState('all');
     const [counsellorFilter, setCounsellor] = useState('all');
     const [total, setTotal] = useState(0);
 
-    // Debounce search so we don't fire API on every keystroke
     const [debouncedSearch, setDebouncedSearch] = useState('');
     useEffect(() => {
         const t = setTimeout(() => setDebouncedSearch(search), 400);
@@ -42,39 +41,37 @@ export default function AdminCallsPage() {
     const fetchCalls = async () => {
         setLoading(true);
         try {
-            // Build query params — all filtering done server-side
-            const params = new URLSearchParams();
-            if (debouncedSearch) params.set('keyword', debouncedSearch);
-            if (statusFilter !== 'all') params.set('status', statusFilter);
-            if (counsellorFilter !== 'all') params.set('counsellor', counsellorFilter);
-            params.set('limit', '100');
-
-            const res = await API.get(`/analysis?${params.toString()}`);
-            setCalls(res.data.analyses || []);
-            setTotal(res.data.pagination?.total || 0);
-        } catch { } finally { setLoading(false); }
+            const callsRes = await API.get('/calls');
+            const allCallsData = callsRes.data.calls || [];
+            setAllCalls(allCallsData);
+            setTotal(allCallsData.length);
+        } catch (e) {
+            console.error('Failed to load calls:', e);
+        } finally { setLoading(false); }
     };
 
-    // Re-fetch whenever any filter changes
-    useEffect(() => { fetchCalls(); }, [debouncedSearch, statusFilter, counsellorFilter]);
+    useEffect(() => { fetchCalls(); }, []);
 
-    // Counsellor list: fetch once from /calls for the dropdown
-    const [counsellors, setCounsellors] = useState([]);
-    useEffect(() => {
-        API.get('/calls').then(res => {
-            const names = [...new Set((res.data.calls || []).map(c => c.uploadedBy?.fullName).filter(Boolean))];
-            setCounsellors(names);
-        }).catch(() => { });
-    }, []);
+    const counsellors = [...new Set(allCalls.map(c => c.uploadedBy?.fullName).filter(Boolean))];
 
-    // filtered = calls (already filtered by server)
-    const filtered = calls;
+    const filtered = allCalls.filter(c => {
+        const matchCounsellor = counsellorFilter === 'all' || c.uploadedBy?.fullName === counsellorFilter;
+        const matchStatus = statusFilter === 'all' || c.status === statusFilter;
+        const q = debouncedSearch.toLowerCase();
+        const matchSearch = !q ||
+            c.originalFileName?.toLowerCase().includes(q) ||
+            c.uploadedBy?.fullName?.toLowerCase().includes(q) ||
+            c.studentName?.toLowerCase().includes(q) ||
+            c.sentiment?.toLowerCase().includes(q);
+        return matchCounsellor && matchStatus && matchSearch;
+    });
 
     const counts = {
-        all: total,
-        pending: calls.filter(c => c.status === 'pending').length,
-        completed: calls.filter(c => c.status === 'completed').length,
-        failed: calls.filter(c => c.status === 'failed').length,
+        all: allCalls.length,
+        pending: allCalls.filter(c => c.status === 'pending').length,
+        processing: allCalls.filter(c => c.status === 'processing').length,
+        completed: allCalls.filter(c => c.status === 'completed').length,
+        failed: allCalls.filter(c => c.status === 'failed').length,
     };
     
     return (
@@ -84,7 +81,7 @@ export default function AdminCallsPage() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
                     <div>
                         <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#1a1a1a', letterSpacing: '-0.02em', margin: '0 0 4px' }}>All Calls</h1>
-                        <p style={{ color: '#8a8480', fontSize: '14px', margin: 0 }}>{calls.length} total across all counsellors</p>
+                        <p style={{ color: '#8a8480', fontSize: '14px', margin: 0 }}>{allCalls.length} total across all counsellors</p>
                     </div>
                     <button onClick={fetchCalls} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', background: 'white', border: '1px solid #e8e3da', borderRadius: '12px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#6b6560', fontFamily: 'inherit' }}>
                         <RefreshCw size={14} style={loading ? { animation: 'spin 1s linear infinite' } : {}} /> Refresh
@@ -113,7 +110,7 @@ export default function AdminCallsPage() {
 
                 {/* Status Tabs */}
                 <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
-                    {['all', 'pending', 'completed', 'failed'].map(s => (
+                    {['all', 'pending', 'processing', 'completed', 'failed'].map(s => (
                         <button key={s} onClick={() => setStatus(s)} style={{
                             padding: '7px 16px', borderRadius: '10px', border: '1px solid',
                             borderColor: statusFilter === s ? '#111' : '#e8e3da',
@@ -151,7 +148,7 @@ export default function AdminCallsPage() {
                                     return (
                                         <tr key={call._id} style={{ borderBottom: i < filtered.length - 1 ? '1px solid #f0ece6' : 'none' }}>
                                             <td style={{ padding: '14px 16px' }}>
-                                                <div style={{ fontWeight: '700', color: '#1a1a1a', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{call.originalFileName}</div>
+                                                <div style={{ fontWeight: '700', color: '#1a1a1a', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{call.originalFileName || call.title}</div>
                                                 <div style={{ fontSize: '11px', color: '#aaa' }}>{call.fileSizeMB} MB</div>
                                             </td>
                                             <td style={{ padding: '14px 16px', color: '#6b6560', fontWeight: '600' }}>{call.uploadedBy?.fullName || '—'}</td>

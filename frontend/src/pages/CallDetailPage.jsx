@@ -7,9 +7,10 @@ import {
   MapPin, TrendingUp, MessageSquare, PhoneCall, Star
 } from 'lucide-react';
 import API from '../services/api';
-import Navbar from '../components/Layout/Navbar';
+import AppLayout from '../components/Layout/AppLayout';
 import AudioPlayer from '../components/AudioPlayer';
 import { useAuth } from '../context/AuthContext';
+import { LayoutDashboard, Users, Phone, Mic, Upload } from 'lucide-react';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:5001';
@@ -126,6 +127,22 @@ export default function CallDetailPage() {
   const { user } = useAuth();
   const isAdmin = ['super_admin', 'company_admin'].includes(user?.role);
 
+  const ADMIN_NAV = [
+    { path: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+    { path: '/admin/calls', label: 'All Calls', icon: Phone },
+    { path: '/admin/recordings', label: 'Recordings', icon: Mic },
+    { path: '/admin/users', label: 'Users', icon: Users },
+    { path: '/admin/reports', label: 'Reports', icon: FileText },
+  ];
+  const COUNSELOR_NAV = [
+    { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+    { path: '/calls', label: 'My Calls', icon: Phone },
+    { path: '/recordings', label: 'Recordings', icon: Mic },
+    { path: '/upload', label: 'Upload', icon: Upload },
+  ];
+  const navItems = isAdmin ? ADMIN_NAV : COUNSELOR_NAV;
+  const panelLabel = isAdmin ? 'Admin Panel' : 'My Panel';
+
   const [call, setCall]         = useState(null);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
@@ -212,23 +229,21 @@ export default function CallDetailPage() {
 
   // ── Render states ─────────────────────────────────────────────────
   if (loading) return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#f8fafc' }}>
-      <Navbar />
-      <main style={{ flex: 1, marginLeft: '240px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <AppLayout navItems={navItems} panelLabel={panelLabel}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
         <Loader size={32} style={{ animation: 'spin 1s linear infinite', color: '#6366f1' }} />
         <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
-      </main>
-    </div>
+      </div>
+    </AppLayout>
   );
 
   if (error) return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#f8fafc' }}>
-      <Navbar />
-      <main style={{ flex: 1, marginLeft: '240px', padding: '40px' }}>
+    <AppLayout navItems={navItems} panelLabel={panelLabel}>
+      <div style={{ padding: '40px' }}>
         <p style={{ color: '#dc2626', marginBottom: '16px' }}>{error}</p>
-        <Link to="/calls" style={{ color: '#6366f1', fontWeight: '600', fontSize: '14px' }}>← Back to Calls</Link>
-      </main>
-    </div>
+        <Link to={isAdmin ? '/admin/calls' : '/calls'} style={{ color: '#6366f1', fontWeight: '600', fontSize: '14px' }}>← Back to Calls</Link>
+      </div>
+    </AppLayout>
   );
 
   if (!call) return null;
@@ -238,31 +253,25 @@ export default function CallDetailPage() {
   const isCompleted  = call.status === 'completed';
   const isFailed     = call.status === 'failed';
 
-  // Normalise scores — Call model stores them under `scores.*`
   const scores = {
-    communication: call.scores?.communication ?? call.communicationScore,
-    engagement:    call.scores?.engagement    ?? call.engagementScore,
-    confidence:    call.scores?.confidence    ?? call.counsellorConfidenceScore,
-    objection:     call.scores?.objectionHandling,
-    script:        call.scores?.scriptCompliance,
+    communication: call.communicationScore,
+    engagement:    call.engagementScore,
+    confidence:    call.counsellorConfidenceScore,
   };
 
   const sentiment = call.sentiment;
   const sentSt = sentiment ? sentimentStyles[sentiment] : null;
   const statusSt = statusStyles[call.status] || statusStyles.pending;
 
-  const hasTranscript = call.transcriptOriginal || call.transcriptEnglish;
-  const isTranslated  = call.detectedLanguage && call.detectedLanguage !== 'en' && call.transcriptEnglish;
+  const hasTranscript = call.transcript?.originalText || call.transcript?.englishText;
+  const isTranslated  = call.transcript?.detectedLanguage !== 'en' && call.transcript?.englishText;
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#f8fafc' }}>
-      <Navbar />
-
-      <main style={{ flex: 1, marginLeft: '240px', padding: '32px 40px', maxWidth: 'calc(100vw - 240px)' }}>
-        <div style={{ maxWidth: '960px', margin: '0 auto' }}>
+    <AppLayout navItems={navItems} panelLabel={panelLabel}>
+      <div style={{ padding: '32px 40px', maxWidth: '960px', margin: '0 auto' }}>
 
           {/* ── Back link ── */}
-          <Link to="/calls" style={{
+          <Link to={isAdmin ? '/admin/calls' : '/calls'} style={{
             display: 'inline-flex', alignItems: 'center', gap: '6px',
             fontSize: '13px', color: '#64748b', textDecoration: 'none',
             fontWeight: '600', marginBottom: '24px',
@@ -281,7 +290,7 @@ export default function CallDetailPage() {
                 <span>📅 {new Date(call.createdAt).toLocaleString()}</span>
                 {call.fileSizeMB && <span>💾 {call.fileSizeMB} MB</span>}
                 {call.durationSeconds && <span>⏱ {fmt(call.durationSeconds)}</span>}
-                {call.detectedLanguage && <span>🌐 {call.detectedLanguage.toUpperCase()}</span>}
+                {call.transcript?.detectedLanguage && <span>🌐 {call.transcript.detectedLanguage.toUpperCase()}</span>}
               </div>
             </div>
 
@@ -368,13 +377,13 @@ export default function CallDetailPage() {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '20px' }}>
                     <MetaField label="Student" value={call.studentName} />
                     <MetaField label="Counsellor" value={call.counsellorName} />
-                    <MetaField label="Course Interested" value={call.courseInterest} />
-                    <MetaField label="City" value={call.studentCity} />
+                    <MetaField label="Course Interested" value={call.courseInterested} />
+                    <MetaField label="City" value={call.city} />
                     <MetaField label="Lead Score" value={call.leadScore != null ? `${call.leadScore} / 10` : null} large color="#6366f1" />
                     <MetaField label="Sentiment" value={sentiment}
                       color={sentSt?.color} />
                     <MetaField label="Follow-up Date" value={call.followUpDate} />
-                    <MetaField label="Language" value={call.detectedLanguage?.toUpperCase()} />
+                    <MetaField label="Language" value={call.transcript?.detectedLanguage?.toUpperCase()} />
                   </div>
                 </Card>
 
@@ -385,8 +394,6 @@ export default function CallDetailPage() {
                     <ScoreBar label="Communication Score"    value={scores.communication} />
                     <ScoreBar label="Engagement Score"       value={scores.engagement} />
                     <ScoreBar label="Counsellor Confidence"  value={scores.confidence} />
-                    <ScoreBar label="Objection Handling"     value={scores.objection} />
-                    <ScoreBar label="Script Compliance"      value={scores.script} />
                     {call.closingProbability != null && (
                       <ScoreBar label="Closing Probability (%)" value={call.closingProbability} max={100} />
                     )}
@@ -440,7 +447,7 @@ export default function CallDetailPage() {
                             background: activeTab === tab ? '#6366f1' : '#f1f5f9',
                             color: activeTab === tab ? '#fff' : '#64748b',
                           }}>
-                            {tab === 'original' ? `Original (${call.detectedLanguage?.toUpperCase()})` : 'English'}
+                            {tab === 'original' ? `Original (${call.transcript?.detectedLanguage?.toUpperCase()})` : 'English'}
                           </button>
                         ))}
                       </div>
@@ -453,9 +460,9 @@ export default function CallDetailPage() {
                       padding: '16px', background: '#f8fafc',
                       borderRadius: '10px', border: '1px solid #e2e8f0',
                     }}>
-                      {activeTab === 'english' && call.transcriptEnglish
-                        ? call.transcriptEnglish
-                        : (call.transcriptOriginal || call.transcriptEnglish || 'No transcript available.')}
+                      {activeTab === 'english' && call.transcript?.englishText
+                        ? call.transcript.englishText
+                        : (call.transcript?.originalText || call.transcript?.englishText || 'No transcript available.')}
                     </pre>
                   </Card>
                 )}
@@ -476,13 +483,8 @@ export default function CallDetailPage() {
             )}
 
           </div>
-        </div>
-      </main>
-
-      <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        @media (max-width: 768px) { main { margin-left: 0 !important; padding: 16px !important; } }
-      `}</style>
-    </div>
+      </div>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+    </AppLayout>
   );
 }

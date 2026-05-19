@@ -70,51 +70,31 @@ router.get("/dashboard/stats", adminOnly, analysisController.getDashboardStats);
 router.get("/", analysisController.getAllAnalyses);
 
 // ── Trigger analysis ──────────────────────────────────────────────
-// Async trigger — responds immediately, processes in background
 router.post("/process/:audioRecordingId", analysisController.triggerAnalysis);
-
-// Sync trigger — waits for full pipeline completion before responding
-router.post(
-    "/process-sync/:audioRecordingId",
-    analysisController.triggerAnalysisSync
-);
-
-// Batch processing (Admin only)
+router.post("/process-sync/:audioRecordingId", analysisController.triggerAnalysisSync);
 router.post("/batch", adminOnly, analysisController.triggerBatchAnalysis);
 
-// ── Param routes (must be after static routes) ────────────────────
-
-// Get full analysis for a specific recording
-router.get("/:audioRecordingId", analysisController.getAnalysis);
-
-// Lightweight status polling endpoint
-router.get("/:audioRecordingId/status", analysisController.getAnalysisStatus);
-
-// Force re-analysis (Admin only)
-router.post(
-    "/:audioRecordingId/reanalyse",
-    adminOnly,
-    analysisController.reanalyse
-);
-
-// ── Download the master Excel report (Admin only) ─────────────────
+// ── Excel report download — MUST be before /:audioRecordingId ─────
 router.get("/report/download-excel", adminOnly, (req, res) => {
-    const { EXPORT_FILE } = require("../services/excelExportService");
+    const path = require("path");
     const fs = require("fs");
+    const filePath = process.env.EXCEL_EXPORT_DIR ||
+        path.join(__dirname, "../../../exports/sales_call_report.xlsx");
 
-    if (!fs.existsSync(EXPORT_FILE)) {
+    if (!fs.existsSync(filePath)) {
         return res.status(404).json({
             message: "No Excel report found yet. Analyse at least one call first.",
         });
     }
 
-    const filename = `sales_call_report_${new Date().toISOString().slice(0, 10)}.xlsx`;
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    res.setHeader(
-        "Content-Type",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    );
-    res.sendFile(EXPORT_FILE);
+    res.setHeader("Content-Disposition", 'attachment; filename="sales_call_report.xlsx"');
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.download(filePath, "sales_call_report.xlsx");
 });
+
+// ── Param routes (must be after all static routes) ────────────────
+router.get("/:audioRecordingId", analysisController.getAnalysis);
+router.get("/:audioRecordingId/status", analysisController.getAnalysisStatus);
+router.post("/:audioRecordingId/reanalyse", adminOnly, analysisController.reanalyse);
 
 module.exports = router;

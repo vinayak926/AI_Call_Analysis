@@ -159,7 +159,7 @@ router.get("/:id/status", protect, callController.getCallStatus);
 router.get("/:id/stream", protect, async (req, res) => {
     try {
         const AudioRecording = require("../models/AudioRecording");
-        const c = await AudioRecording.findById(id).select("filePath mimeType storedFileName");
+        const c = await AudioRecording.findById(req.params.id).select("filePath mimeType storedFileName uploadedBy");
         if (!c) return res.status(404).json({ message: "Call not found" });
 
         const isAdmin = ["super_admin", "company_admin"].includes(req.user.role);

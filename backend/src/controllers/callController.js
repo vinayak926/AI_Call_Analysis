@@ -147,9 +147,40 @@ const getCalls = async (req, res) => {
 
         const recordings = await AudioRecording.find(filter)
             .populate("uploadedBy", "fullName email")
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .lean();
 
-        res.status(200).json({ calls: recordings });
+        const recordingIds = recordings.map(r => r._id);
+        const analyses = await CallAnalysis.find({ audioRecordingId: { $in: recordingIds } })
+            .select('audioRecordingId status sentiment leadScore studentName counsellorName followUpRequired')
+            .lean();
+
+        const analysisMap = {};
+        analyses.forEach(a => { analysisMap[a.audioRecordingId.toString()] = a; });
+
+        const merged = recordings.map(rec => {
+            const analysis = analysisMap[rec._id.toString()];
+            if (analysis && analysis.status === 'completed') {
+                return {
+                    ...rec,
+                    sentiment: analysis.sentiment,
+                    leadScore: analysis.leadScore,
+                    studentName: analysis.studentName,
+                    counsellorName: analysis.counsellorName,
+                    followUpRequired: analysis.followUpRequired,
+                    status: 'completed',
+                };
+            }
+            if (analysis && ['transcribing', 'translating', 'analysing'].includes(analysis.status)) {
+                return { ...rec, status: 'processing' };
+            }
+            if (analysis && analysis.status === 'failed') {
+                return { ...rec, status: 'failed' };
+            }
+            return rec;
+        });
+
+        res.status(200).json({ calls: merged });
     } catch (error) {
         res.status(500).json({ message: "Server error.", error: error.message });
     }
@@ -170,7 +201,44 @@ const getCallById = async (req, res) => {
             return res.status(403).json({ message: "Access denied." });
         }
 
-        res.status(200).json({ call: recording });
+        const analysis = await CallAnalysis.findOne({ audioRecordingId: req.params.id }).lean();
+        const callData = recording.toObject();
+
+        if (analysis && analysis.status === 'completed') {
+            Object.assign(callData, {
+                transcript: analysis.transcript,
+                studentName: analysis.studentName,
+                counsellorName: analysis.counsellorName,
+                courseInterested: analysis.courseInterested,
+                city: analysis.city,
+                keyConcerns: analysis.keyConcerns,
+                followUpDate: analysis.followUpDate,
+                sentiment: analysis.sentiment,
+                interested: analysis.interested,
+                followUpRequired: analysis.followUpRequired,
+                parentConcern: analysis.parentConcern,
+                feesIssue: analysis.feesIssue,
+                placementConcern: analysis.placementConcern,
+                timingConcern: analysis.timingConcern,
+                leadScore: analysis.leadScore,
+                communicationScore: analysis.communicationScore,
+                engagementScore: analysis.engagementScore,
+                counsellorConfidenceScore: analysis.counsellorConfidenceScore,
+                closingProbability: analysis.closingProbability,
+                callSummary: analysis.callSummary,
+                processingTimeMs: analysis.processingTimeMs,
+                llmModel: analysis.llmModel,
+                sttModel: analysis.sttModel,
+                status: 'completed',
+            });
+        } else if (analysis && ['transcribing', 'translating', 'analysing'].includes(analysis.status)) {
+            callData.status = 'processing';
+        } else if (analysis && analysis.status === 'failed') {
+            callData.status = 'failed';
+            callData.errorMessage = analysis.errorMessage;
+        }
+
+        res.status(200).json({ call: callData });
     } catch (error) {
         res.status(500).json({ message: "Server error.", error: error.message });
     }
