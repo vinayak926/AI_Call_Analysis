@@ -14,10 +14,10 @@ const path = require("path");
 const OpenAI = require("openai");
 const AudioRecording = require("../models/AudioRecording");
 const CallAnalysis = require("../models/CallAnalysis");
-const User = require("../models/User");                             
+const User = require("../models/User");
 const { appendToExcel } = require("./excelExportService");
 const { preprocessAudio, cleanupProcessedFile } = require("./audioPreprocessService");
-const { sendAnalysisAlerts } = require("./notificationService");   
+const { sendAnalysisAlerts } = require("./notificationService");
 
 
 // ── Lazy-initialised OpenAI client ────────────────────────────────
@@ -251,7 +251,7 @@ function sanitiseAnalysis(raw) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// MAIN PIPELINE — Orchestrates all 3 steps and saves to MongoDB
+// MAIN PIPELINE — Orchestrates all steps and saves to MongoDB
 // ─────────────────────────────────────────────────────────────────
 async function processAudioRecording(audioRecordingId) {
     const startTime = Date.now();
@@ -276,7 +276,6 @@ async function processAudioRecording(audioRecordingId) {
     // ── Create or reset the CallAnalysis record ───────────────
     let callAnalysis;
     if (existing) {
-        // Reset the existing record for re-analysis
         existing.status = "pending";
         existing.errorMessage = null;
         await existing.save();
@@ -285,7 +284,6 @@ async function processAudioRecording(audioRecordingId) {
         callAnalysis = await CallAnalysis.create({
             audioRecordingId,
             status: "pending",
-            // Placeholder values — will be overwritten
             sentiment: "Neutral",
             leadScore: 1,
             callSummary: "Processing...",
@@ -294,7 +292,7 @@ async function processAudioRecording(audioRecordingId) {
 
     try {
         // ────────────────────────────────────────────────────────
-        // STEP 1 — Transcribe  Preprocess audio (noise reduction + normalise)
+        // STEP 1 — Preprocess audio (noise reduction + normalise)
         // ────────────────────────────────────────────────────────
         callAnalysis.status = "transcribing";
         await callAnalysis.save();
@@ -307,21 +305,18 @@ async function processAudioRecording(audioRecordingId) {
             audioPathForWhisper = cleanPath;
             cleanFilePath = cleanPath;
 
-            // Save duration onto the AudioRecording document
             if (durationSeconds > 0) {
                 await AudioRecording.findByIdAndUpdate(audioRecordingId, {
                     durationSeconds,
                 });
             }
         } catch (prepErr) {
-            // Preprocessing failed — fall back to raw file
-            // Whisper can still transcribe it, just without cleaning
             console.warn("⚠️  Preprocessing failed, using raw file:", prepErr.message);
             audioPathForWhisper = recording.filePath;
         }
 
         // ────────────────────────────────────────────────────────
-        // STEP 2 — Transcribe (was Step 1)
+        // STEP 2 — Transcribe using OpenAI Whisper
         // ────────────────────────────────────────────────────────
         const transcription = await transcribeAudio(audioPathForWhisper);
 
@@ -334,7 +329,22 @@ async function processAudioRecording(audioRecordingId) {
         await callAnalysis.save();
 
         // ────────────────────────────────────────────────────────
-        // STEP 3 — Analyse with GPT-4o
+        // STEP 3 — Translate to English if needed
+        // ────────────────────────────────────────────────────────
+        callAnalysis.status = "translating";
+        await callAnalysis.save();
+
+        const translation = await translateToEnglish(
+            transcription.originalText,
+            transcription.detectedLanguage
+        );
+
+        callAnalysis.transcript.translationRequired = translation.translationRequired;
+        callAnalysis.transcript.englishText = translation.englishText;
+        await callAnalysis.save();
+
+        // ────────────────────────────────────────────────────────
+        // STEP 4 — Analyse with GPT-4o
         // ────────────────────────────────────────────────────────
         callAnalysis.status = "analysing";
         await callAnalysis.save();
@@ -342,11 +352,10 @@ async function processAudioRecording(audioRecordingId) {
         const analysis = await analyseTranscript(translation.englishText);
 
         // ────────────────────────────────────────────────────────
-        // STEP 4 — Save all results to MongoDB
+        // STEP 5 — Save all results to MongoDB
         // ────────────────────────────────────────────────────────
-        const processingTimeMs = Date.now() - startTime;
+        const processingTimeMs = Date.now() - startTime;    // FIX: defined before use
 
-        // Map LLM output to Mongoose schema fields
         callAnalysis.studentName = analysis.student_name;
         callAnalysis.counsellorName = analysis.counsellor_name;
         callAnalysis.courseInterested = analysis.course_interested;
@@ -375,17 +384,19 @@ async function processAudioRecording(audioRecordingId) {
         await callAnalysis.save();
 
         // ────────────────────────────────────────────────────────
-        // STEP 5 — Update the AudioRecording status to "analysed"
+        // STEP 6 — Update AudioRecording status + Excel export
         // ────────────────────────────────────────────────────────
         await AudioRecording.findByIdAndUpdate(audioRecordingId, {
             status: "analysed",
         });
 
+        let uploaderName = "";                              // FIX: declared outside try block
+
         try {
             const uploaderDoc = await User.findById(recording.uploadedBy)
                 .select("fullName")
                 .lean();
-            const uploaderName = uploaderDoc?.fullName || "";
+            uploaderName = uploaderDoc?.fullName || "";     // FIX: assignment not declaration
             await appendToExcel(callAnalysis, recording, uploaderName);
         } catch (excelErr) {
             console.error("⚠️  Excel export failed (non-fatal):", excelErr.message);
@@ -406,7 +417,7 @@ async function processAudioRecording(audioRecordingId) {
         });
 
         const elapsedSec = (processingTimeMs / 1000).toFixed(1);
-        
+
         console.log(`\n${"─".repeat(60)}`);
         console.log(`✅ Pipeline complete in ${elapsedSec}s`);
         console.log(`   Sentiment: ${analysis.sentiment} | Lead Score: ${analysis.lead_score}/10`);
@@ -423,7 +434,6 @@ async function processAudioRecording(audioRecordingId) {
         callAnalysis.errorMessage = error.message;
         await callAnalysis.save();
 
-        // Also mark the AudioRecording as failed
         await AudioRecording.findByIdAndUpdate(audioRecordingId, {
             status: "failed",
         });
@@ -459,7 +469,6 @@ async function processBatch(audioRecordingIds) {
 module.exports = {
     processAudioRecording,
     processBatch,
-    // Expose individual steps for testing/reuse
     transcribeAudio,
     translateToEnglish,
     analyseTranscript,

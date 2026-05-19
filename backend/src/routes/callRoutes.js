@@ -101,7 +101,7 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-    const allowed = [".mp3", ".wav", ".m4a"];
+    const allowed = [".mp3", ".wav", ".m4a", ".ogg", ".webm"];
     const ext = path.extname(file.originalname).toLowerCase();
     if (allowed.includes(ext)) {
         cb(null, true);
@@ -167,7 +167,7 @@ router.get("/:id/stream", protect, async (req, res) => {
             return res.status(403).json({ message: "Access denied." });
         }
 
-        const fs   = require("fs");
+        const fs = require("fs");
         const path = require("path");
         const absPath = path.resolve(c.filePath);
 
@@ -184,10 +184,10 @@ router.get("/:id/stream", protect, async (req, res) => {
         if (range) {
             const [startStr, endStr] = range.replace(/bytes=/, "").split("-");
             const start = parseInt(startStr, 10);
-            const end   = endStr ? parseInt(endStr, 10) : stat.size - 1;
+            const end = endStr ? parseInt(endStr, 10) : stat.size - 1;
             const chunkSize = end - start + 1;
             res.writeHead(206, {
-                "Content-Range":  `bytes ${start}-${end}/${stat.size}`,
+                "Content-Range": `bytes ${start}-${end}/${stat.size}`,
                 "Content-Length": chunkSize,
             });
             fs.createReadStream(absPath, { start, end }).pipe(res);
