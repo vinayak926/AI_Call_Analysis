@@ -366,6 +366,24 @@ export default function CallDetailPage() {
             <Card>
               <CardTitle><PhoneCall size={15} color="#6366f1" /> Audio Recording</CardTitle>
               <AudioPlayer src={getCallStreamUrl(id)} fileName={call.originalFileName} />
+              {/* Preprocessing / quality badges */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
+                {call.preprocessed && (
+                  <span style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '999px', padding: '3px 10px', fontSize: '11px', fontWeight: '700' }}>
+                    ✓ Noise Reduced
+                  </span>
+                )}
+                {call.durationSeconds && (
+                  <span style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '999px', padding: '3px 10px', fontSize: '11px', fontWeight: '700' }}>
+                    ⏱ {fmt(call.durationSeconds)}
+                  </span>
+                )}
+                {call.transcript?.detectedLanguage && call.transcript.detectedLanguage !== 'en' && call.transcript?.translationRequired && (
+                  <span style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '999px', padding: '3px 10px', fontSize: '11px', fontWeight: '700' }}>
+                    🌐 Auto-translated from {call.transcript.detectedLanguage.toUpperCase()}
+                  </span>
+                )}
+              </div>
             </Card>
 
             {/* ── Analysis Results (only when completed) ── */}
@@ -453,17 +471,67 @@ export default function CallDetailPage() {
                       </div>
                     )}
 
-                    <pre style={{
-                      fontSize: '13px', color: '#374151', lineHeight: 1.8,
-                      whiteSpace: 'pre-wrap', fontFamily: 'inherit',
-                      margin: 0, maxHeight: '420px', overflowY: 'auto',
-                      padding: '16px', background: '#f8fafc',
-                      borderRadius: '10px', border: '1px solid #e2e8f0',
-                    }}>
-                      {activeTab === 'english' && call.transcript?.englishText
-                        ? call.transcript.englishText
-                        : (call.transcript?.originalText || call.transcript?.englishText || 'No transcript available.')}
-                    </pre>
+                    {/* Diarized view */}
+                    {call.diarizedSegments?.length > 0 && activeTab !== 'original' ? (
+                      <>
+                        <div style={{
+                          maxHeight: '500px', overflowY: 'auto', display: 'flex',
+                          flexDirection: 'column', gap: '12px', padding: '16px',
+                          background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0',
+                        }}>
+                          {call.diarizedSegments.map((seg, i) => {
+                            const isCounsellor = seg.speaker === 'COUNSELLOR';
+                            const mins = Math.floor(seg.start / 60);
+                            const secs = Math.floor(seg.start % 60);
+                            const ts = `${mins}:${String(secs).padStart(2, '0')}`;
+                            return (
+                              <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: isCounsellor ? 'flex-start' : 'flex-end' }}>
+                                <p style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.07em', margin: '0 0 4px', textAlign: isCounsellor ? 'left' : 'right' }}>
+                                  {isCounsellor ? (call.counsellorName || 'Counsellor') : (call.studentName || 'Student')}
+                                </p>
+                                <div style={{
+                                  maxWidth: '75%', borderRadius: '12px', padding: '10px 14px',
+                                  fontSize: '13px', lineHeight: 1.6,
+                                  background: isCounsellor ? '#f1f5f9' : '#eff6ff',
+                                  color: isCounsellor ? '#1e293b' : '#1e3a8a',
+                                }}>
+                                  {seg.text}
+                                </div>
+                                <p style={{ fontSize: '10px', color: '#cbd5e1', margin: '3px 0 0' }}>{ts}</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {/* Speaking stats */}
+                        {(() => {
+                          const total = call.diarizedSegments.length;
+                          const cCount = call.diarizedSegments.filter(s => s.speaker === 'COUNSELLOR').length;
+                          const sCount = total - cCount;
+                          return (
+                            <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
+                              <span style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0', borderRadius: '999px', padding: '3px 10px', fontSize: '11px', fontWeight: '700' }}>
+                                Counsellor: {cCount} segments ({Math.round(cCount / total * 100)}%)
+                              </span>
+                              <span style={{ background: '#eff6ff', color: '#1e40af', border: '1px solid #bfdbfe', borderRadius: '999px', padding: '3px 10px', fontSize: '11px', fontWeight: '700' }}>
+                                Student: {sCount} segments ({Math.round(sCount / total * 100)}%)
+                              </span>
+                            </div>
+                          );
+                        })()}
+                      </>
+                    ) : (
+                      <pre style={{
+                        fontSize: '13px', color: '#374151', lineHeight: 1.8,
+                        whiteSpace: 'pre-wrap', fontFamily: 'inherit',
+                        margin: 0, maxHeight: '420px', overflowY: 'auto',
+                        padding: '16px', background: '#f8fafc',
+                        borderRadius: '10px', border: '1px solid #e2e8f0',
+                      }}>
+                        {activeTab === 'english' && call.transcript?.englishText
+                          ? call.transcript.englishText
+                          : (call.transcript?.originalText || call.transcript?.englishText || 'No transcript available.')}
+                      </pre>
+                    )}
                   </Card>
                 )}
               </>

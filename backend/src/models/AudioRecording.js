@@ -75,6 +75,9 @@ const audioRecordingSchema = new mongoose.Schema(
             enum: ["pending", "processing", "analysed", "failed"],
             default: "pending",
         },
+
+        // Whether audio was preprocessed (noise reduced) before transcription
+        preprocessed: { type: Boolean, default: false },
     },
     { timestamps: true }
 );

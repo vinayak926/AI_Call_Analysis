@@ -226,6 +226,7 @@ const getCallById = async (req, res) => {
                 counsellorConfidenceScore: analysis.counsellorConfidenceScore,
                 closingProbability: analysis.closingProbability,
                 callSummary: analysis.callSummary,
+                diarizedSegments: analysis.diarizedSegments || [],
                 processingTimeMs: analysis.processingTimeMs,
                 llmModel: analysis.llmModel,
                 sttModel: analysis.sttModel,

@@ -154,7 +154,10 @@ export default function AdminCallsPage() {
                                             <td style={{ padding: '14px 16px', color: '#6b6560', fontWeight: '600' }}>{call.uploadedBy?.fullName || '—'}</td>
                                             <td style={{ padding: '14px 16px', color: '#aaa', fontSize: '12px' }}>{new Date(call.createdAt).toLocaleDateString()}</td>
                                             <td style={{ padding: '14px 16px', color: '#6b6560' }}>
-                                                {call.durationSeconds ? `${Math.floor(call.durationSeconds / 60)}:${String(call.durationSeconds % 60).padStart(2, '0')}` : '—'}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    {call.durationSeconds ? `${Math.floor(call.durationSeconds / 60)}:${String(call.durationSeconds % 60).padStart(2, '0')}` : '—'}
+                                                    {call.preprocessed && <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#16a34a', flexShrink: 0 }} title="Noise reduced" />}
+                                                </div>
                                             </td>
                                             <td style={{ padding: '14px 16px' }}>
                                                 {call.leadScore != null ? (

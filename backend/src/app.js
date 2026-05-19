@@ -82,6 +82,7 @@ app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/calls", require("./routes/callRoutes"));
 app.use("/api/audio", require("./routes/audioRoutes"));
 app.use("/api/analysis", require("./routes/analysisRoutes"));
+app.use("/api/notifications", require("./routes/notificationRoutes"));
 
 // ── Global error handler ─────────────────────────────────────────
 // BUG FIX: No error handler existed, so multer file-filter errors

@@ -250,6 +250,35 @@ function sanitiseAnalysis(raw) {
     };
 }
 
+async function diarizeSegments(segments, counsellorName, studentName) {
+    if (!segments || segments.length === 0) return [];
+    console.log('  🎤 [Diarize] Assigning speaker labels to segments...');
+    const segmentText = segments.map((s, i) => `[${i}] ${s.text.trim()}`).join('\n');
+    const response = await getOpenAI().chat.completions.create({
+        model: GPT_MODEL,
+        temperature: 0.1,
+        response_format: { type: 'json_object' },
+        messages: [
+            {
+                role: 'system',
+                content: 'You are a speaker diarization expert. Given transcript segments from a sales call between a counsellor and a student, assign each segment to either COUNSELLOR or STUDENT. Return ONLY a JSON object with key "labels" which is an array of strings, one per segment, each being either "COUNSELLOR" or "STUDENT". Counsellors typically introduce the course, handle objections, ask closing questions. Students ask questions, raise concerns, respond to pitches.',
+            },
+            {
+                role: 'user',
+                content: `Counsellor name (if known): ${counsellorName || 'unknown'}\nStudent name (if known): ${studentName || 'unknown'}\n\nSegments:\n${segmentText}\n\nReturn JSON: {"labels": ["COUNSELLOR", "STUDENT", ...]}`,
+            },
+        ],
+    });
+    const raw = JSON.parse(response.choices[0].message.content.trim());
+    const labels = Array.isArray(raw.labels) ? raw.labels : [];
+    return segments.map((seg, i) => ({
+        start: seg.start,
+        end: seg.end,
+        text: seg.text.trim(),
+        speaker: labels[i] === 'COUNSELLOR' ? 'COUNSELLOR' : 'STUDENT',
+    }));
+}
+
 // ─────────────────────────────────────────────────────────────────
 // MAIN PIPELINE — Orchestrates all steps and saves to MongoDB
 // ─────────────────────────────────────────────────────────────────
@@ -301,13 +330,14 @@ async function processAudioRecording(audioRecordingId) {
         let cleanFilePath = null;
 
         try {
-            const { cleanPath, durationSeconds } = await preprocessAudio(recording.filePath);
+            const { cleanPath, durationSeconds, wasConverted } = await preprocessAudio(recording.filePath);
             audioPathForWhisper = cleanPath;
             cleanFilePath = cleanPath;
 
             if (durationSeconds > 0) {
                 await AudioRecording.findByIdAndUpdate(audioRecordingId, {
                     durationSeconds,
+                    preprocessed: wasConverted,
                 });
             }
         } catch (prepErr) {
@@ -352,6 +382,22 @@ async function processAudioRecording(audioRecordingId) {
         const analysis = await analyseTranscript(translation.englishText);
 
         // ────────────────────────────────────────────────────────
+        // STEP 4b — Speaker diarization (non-fatal)
+        // ────────────────────────────────────────────────────────
+        let diarizedSegments = [];
+        try {
+            diarizedSegments = await diarizeSegments(
+                transcription.segments,
+                analysis.counsellor_name,
+                analysis.student_name
+            );
+            console.log(`  ✅ Diarization complete — ${diarizedSegments.length} segments labeled`);
+        } catch (diarErr) {
+            console.warn('  ⚠️ Diarization failed (non-fatal):', diarErr.message);
+            diarizedSegments = [];
+        }
+
+        // ────────────────────────────────────────────────────────
         // STEP 5 — Save all results to MongoDB
         // ────────────────────────────────────────────────────────
         const processingTimeMs = Date.now() - startTime;    // FIX: defined before use
@@ -375,6 +421,7 @@ async function processAudioRecording(audioRecordingId) {
         callAnalysis.closingProbability = analysis.closing_probability;
         callAnalysis.leadScore = analysis.lead_score;
         callAnalysis.callSummary = analysis.call_summary;
+        callAnalysis.diarizedSegments = diarizedSegments;
         callAnalysis.processingTimeMs = processingTimeMs;
         callAnalysis.llmModel = GPT_MODEL;
         callAnalysis.sttModel = WHISPER_MODEL;

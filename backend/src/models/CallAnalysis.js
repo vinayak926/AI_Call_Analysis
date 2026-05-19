@@ -59,6 +59,13 @@ const callAnalysisSchema = new mongoose.Schema(
         // ── AI-generated summary ──────────────────────────────────
         callSummary: { type: String, required: true },
 
+        diarizedSegments: [{
+            start: { type: Number },
+            end: { type: Number },
+            text: { type: String },
+            speaker: { type: String, enum: ['COUNSELLOR', 'STUDENT'] },
+        }],
+
         // ── Processing metadata ───────────────────────────────────
         processingTimeMs: { type: Number, default: null },
         llmModel: { type: String, default: "gpt-4o" },
