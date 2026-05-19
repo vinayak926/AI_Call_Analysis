@@ -30,37 +30,53 @@ export default function AdminCallsPage() {
     const [search, setSearch] = useState('');
     const [statusFilter, setStatus] = useState('all');
     const [counsellorFilter, setCounsellor] = useState('all');
+    const [total, setTotal] = useState(0);
+
+    // Debounce search so we don't fire API on every keystroke
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+    useEffect(() => {
+        const t = setTimeout(() => setDebouncedSearch(search), 400);
+        return () => clearTimeout(t);
+    }, [search]);
 
     const fetchCalls = async () => {
         setLoading(true);
         try {
-            const res = await API.get('/calls');
-            setCalls(res.data.calls || []);
+            // Build query params — all filtering done server-side
+            const params = new URLSearchParams();
+            if (debouncedSearch) params.set('keyword', debouncedSearch);
+            if (statusFilter !== 'all') params.set('status', statusFilter);
+            if (counsellorFilter !== 'all') params.set('counsellor', counsellorFilter);
+            params.set('limit', '100');
+
+            const res = await API.get(`/analysis?${params.toString()}`);
+            setCalls(res.data.analyses || []);
+            setTotal(res.data.pagination?.total || 0);
         } catch { } finally { setLoading(false); }
     };
 
-    useEffect(() => { fetchCalls(); }, []);
+    // Re-fetch whenever any filter changes
+    useEffect(() => { fetchCalls(); }, [debouncedSearch, statusFilter, counsellorFilter]);
 
-    const counsellors = [...new Set(calls.map(c => c.uploadedBy?.fullName).filter(Boolean))];
+    // Counsellor list: fetch once from /calls for the dropdown
+    const [counsellors, setCounsellors] = useState([]);
+    useEffect(() => {
+        API.get('/calls').then(res => {
+            const names = [...new Set((res.data.calls || []).map(c => c.uploadedBy?.fullName).filter(Boolean))];
+            setCounsellors(names);
+        }).catch(() => { });
+    }, []);
 
-    const filtered = calls.filter(c => {
-        const matchStatus = statusFilter === 'all' || c.status === statusFilter;
-        const matchCounsellor = counsellorFilter === 'all' || c.uploadedBy?.fullName === counsellorFilter;
-        const q = search.toLowerCase();
-        const matchSearch = !q || c.originalFileName?.toLowerCase().includes(q) ||
-            c.uploadedBy?.fullName?.toLowerCase().includes(q) ||
-            c.sentiment?.toLowerCase().includes(q) ||
-            c.studentName?.toLowerCase().includes(q);
-        return matchStatus && matchCounsellor && matchSearch;
-    });
+    // filtered = calls (already filtered by server)
+    const filtered = calls;
 
     const counts = {
-        all: calls.length,
+        all: total,
         pending: calls.filter(c => c.status === 'pending').length,
         completed: calls.filter(c => c.status === 'completed').length,
         failed: calls.filter(c => c.status === 'failed').length,
     };
-
+    
     return (
         <AppLayout navItems={ADMIN_NAV} panelLabel="Admin Panel">
             <div style={{ padding: '32px 40px' }}>

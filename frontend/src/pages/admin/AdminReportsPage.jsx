@@ -146,13 +146,31 @@ export default function AdminReportsPage() {
             setGenerating(false);
         }, 100);
     };
-
     const handleExcel = () => {
         setGenerating(true);
         setTimeout(() => {
             generateCSV(filteredCalls, `callintel_report_${filenameSuffix}.csv`);
             setGenerating(false);
         }, 100);
+    };
+
+    const handleMasterExcel = async () => {
+        setGenerating(true);
+        try {
+            const res = await API.get('/analysis/report/download-excel', {
+                responseType: 'blob',
+            });
+            const url = URL.createObjectURL(new Blob([res.data]));
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `sales_call_report_${new Date().toISOString().slice(0, 10)}.xlsx`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            alert('No Excel report found yet. Analyse at least one call first.');
+        } finally {
+            setGenerating(false);
+        }
     };
 
     const SummaryCard = ({ label, value, color }) => (
@@ -244,7 +262,7 @@ export default function AdminReportsPage() {
                         </div>
 
                         {/* Download Buttons */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '28px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '28px' }}>
                             {/* PDF */}
                             <button onClick={handlePDF} disabled={generating || filteredCalls.length === 0}
                                 style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '22px', background: 'white', border: '1px solid #e8e3da', borderRadius: '18px', cursor: filteredCalls.length === 0 ? 'not-allowed' : 'pointer', textAlign: 'left', opacity: filteredCalls.length === 0 ? 0.5 : 1, transition: 'box-shadow .2s', fontFamily: 'inherit' }}>
@@ -272,6 +290,19 @@ export default function AdminReportsPage() {
                                 </div>
                                 <Download size={18} style={{ color: '#16a34a', marginLeft: 'auto' }} />
                             </button>
+                                {/* Master Excel — server-generated auto-export */}
+                                <button onClick={handleMasterExcel} disabled={generating}
+                                    style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '22px', background: 'white', border: '2px solid #bbf7d0', borderRadius: '18px', cursor: 'pointer', textAlign: 'left', transition: 'box-shadow .2s', fontFamily: 'inherit' }}>
+                                    <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                        <FileSpreadsheet size={22} style={{ color: '#15803d' }} />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontWeight: '800', fontSize: '15px', color: '#1a1a1a', marginBottom: '4px' }}>Master Excel Report</div>
+                                        <div style={{ fontSize: '12px', color: '#8a8480' }}>Auto-generated .xlsx — updated after every analysis</div>
+                                        <div style={{ fontSize: '11px', color: '#15803d', fontWeight: '600', marginTop: '6px' }}>Server file · All time · colour-coded</div>
+                                    </div>
+                                    <Download size={18} style={{ color: '#15803d', marginLeft: 'auto' }} />
+                                </button>
                         </div>
 
                         {/* Per-Counsellor Quick Download Section */}
