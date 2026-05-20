@@ -152,7 +152,7 @@ const getCalls = async (req, res) => {
 
         const recordingIds = recordings.map(r => r._id);
         const analyses = await CallAnalysis.find({ audioRecordingId: { $in: recordingIds } })
-            .select('audioRecordingId status sentiment leadScore studentName counsellorName followUpRequired')
+            .select('audioRecordingId status sentiment leadScore studentName counsellorName followUpRequired courseInterested city followUpDate communicationScore engagementScore counsellorConfidenceScore closingProbability callSummary')
             .lean();
 
         const analysisMap = {};
@@ -168,6 +168,14 @@ const getCalls = async (req, res) => {
                     studentName: analysis.studentName,
                     counsellorName: analysis.counsellorName,
                     followUpRequired: analysis.followUpRequired,
+                    courseInterested: analysis.courseInterested,
+                    city: analysis.city,
+                    followUpDate: analysis.followUpDate,
+                    communicationScore: analysis.communicationScore,
+                    engagementScore: analysis.engagementScore,
+                    counsellorConfidenceScore: analysis.counsellorConfidenceScore,
+                    closingProbability: analysis.closingProbability,
+                    callSummary: analysis.callSummary,
                     status: 'completed',
                 };
             }

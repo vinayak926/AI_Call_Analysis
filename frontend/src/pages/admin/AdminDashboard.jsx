@@ -45,6 +45,8 @@ export default function AdminDashboard() {
   const [calls, setCalls] = useState([]);
   const [users, setUsers] = useState([]);
   const [error, setError] = useState(null);
+  const [chartDays, setChartDays] = useState(14);
+  const [chartRange, setChartRange] = useState('14d');
 
   const fetchAll = async () => {
     setLoading(true);
@@ -74,12 +76,14 @@ export default function AdminDashboard() {
   completed.forEach(c => { if (c.sentiment && sentCounts[c.sentiment] !== undefined) sentCounts[c.sentiment]++; });
   const sentPie = Object.entries(sentCounts).map(([name, value]) => ({ name, value }));
 
-  // Daily volume last 14 days
-  const dailyVol = Array.from({ length: 14 }, (_, i) => {
-    const d = new Date(); d.setDate(d.getDate() - (13 - i));
+  // Daily volume — dynamic range
+  const dailyVol = Array.from({ length: chartDays }, (_, i) => {
+    const d = new Date(); d.setDate(d.getDate() - (chartDays - 1 - i));
     const ds = d.toISOString().split('T')[0];
     return {
-      name: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      name: chartDays <= 14
+        ? d.toLocaleDateString('en-US', { weekday: 'short' })
+        : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
       calls: calls.filter(c => c.createdAt?.startsWith(ds)).length,
       analysed: calls.filter(c => c.createdAt?.startsWith(ds) && c.status === 'completed').length,
     };
@@ -159,8 +163,28 @@ export default function AdminDashboard() {
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px', marginBottom: '20px' }}>
               {/* Volume chart */}
               <div style={{ background: 'white', borderRadius: '20px', border: '1px solid #e8e3da', padding: '24px' }}>
-                <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1a1a1a', margin: '0 0 4px' }}>Call Volume — Last 14 Days</h3>
-                <p style={{ fontSize: '12px', color: '#8a8480', margin: '0 0 16px' }}>Uploads vs Analysed</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                  <div>
+                    <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1a1a1a', margin: '0 0 4px' }}>Call Volume — Last {chartDays} Days</h3>
+                    <p style={{ fontSize: '12px', color: '#8a8480', margin: 0 }}>Uploads vs Analysed</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    {[
+                      { label: '7D', days: 7, key: '7d' },
+                      { label: '14D', days: 14, key: '14d' },
+                      { label: '30D', days: 30, key: '30d' },
+                      { label: '90D', days: 90, key: '90d' },
+                    ].map(opt => (
+                      <button key={opt.key} onClick={() => { setChartDays(opt.days); setChartRange(opt.key); }} style={{
+                        padding: '5px 12px', borderRadius: '8px', border: '1px solid',
+                        borderColor: chartRange === opt.key ? '#6366f1' : '#e8e3da',
+                        background: chartRange === opt.key ? '#eef2ff' : 'white',
+                        color: chartRange === opt.key ? '#6366f1' : '#8a8480',
+                        fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit',
+                      }}>{opt.label}</button>
+                    ))}
+                  </div>
+                </div>
                 <ResponsiveContainer width="100%" height={220}>
                   <AreaChart data={dailyVol}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0ece6" />
@@ -174,7 +198,7 @@ export default function AdminDashboard() {
                 </ResponsiveContainer>
               </div>
 
-              {/* Sentiment pie */}
+              {/* Sentiment pie
               <div style={{ background: 'white', borderRadius: '20px', border: '1px solid #e8e3da', padding: '24px' }}>
                 <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1a1a1a', margin: '0 0 4px' }}>Sentiment Split</h3>
                 <p style={{ fontSize: '12px', color: '#8a8480', margin: '0 0 8px' }}>From analysed calls</p>
@@ -186,6 +210,43 @@ export default function AdminDashboard() {
                       ))}
                     </Pie>
                     <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div> */}
+              {/* Sentiment pie */}
+              <div style={{ background: 'white', borderRadius: '20px', border: '1px solid #e8e3da', padding: '24px' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1a1a1a', margin: '0 0 4px' }}>Sentiment Split</h3>
+                <p style={{ fontSize: '12px', color: '#8a8480', margin: '0 0 16px' }}>From analysed calls</p>
+
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+                    <Pie
+                      data={sentPie}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={52}
+                      outerRadius={75}
+                      dataKey="value"
+                      label={false}
+                      labelLine={false}
+                    >
+                      {sentPie.map((entry) => (
+                        <Cell key={entry.name} fill={SENT_COLORS[entry.name] || '#ccc'} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value, name) => [`${value} calls`, name]}
+                      contentStyle={{ borderRadius: '10px', border: '1px solid #e8e3da', fontSize: '13px' }}
+                    />
+                    <Legend
+                      iconType="circle"
+                      iconSize={9}
+                      formatter={(value, entry) => (
+                        <span style={{ fontSize: '12px', color: '#4b5563', fontWeight: '600' }}>
+                          {value} — {entry.payload.value}
+                        </span>
+                      )}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </div>

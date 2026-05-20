@@ -55,6 +55,9 @@ const analysisController = require("../controllers/analysisController");
 // All routes require authentication
 router.use(protect);
 
+// Google Sheets bulk export (Admin only) — static, must be before param routes
+router.post("/export/google-sheets", adminOnly, analysisController.exportToGoogleSheets);
+
 // ── Static / named routes MUST come before param routes ───────────
 // BUG FIX: In the original file, GET /dashboard/stats was declared
 // AFTER GET /:audioRecordingId. Express matches routes top-to-bottom,

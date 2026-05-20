@@ -11,7 +11,8 @@
 
 const fs = require("fs");
 const path = require("path");
-const OpenAI = require("openai");
+// const OpenAI = require("openai");
+const Groq = require("groq-sdk");
 const AudioRecording = require("../models/AudioRecording");
 const CallAnalysis = require("../models/CallAnalysis");
 const User = require("../models/User");
@@ -23,21 +24,35 @@ const { sendAnalysisAlerts } = require("./notificationService");
 // ── Lazy-initialised OpenAI client ────────────────────────────────
 // We defer creation so the module can be required before dotenv loads
 let _openai = null;
+// function getOpenAI() {
+//     if (!_openai) {
+//         if (!process.env.OPENAI_API_KEY) {
+//             throw new Error(
+//                 "OPENAI_API_KEY is not set. Add it to your .env file."
+//             );
+//         }
+//         // _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+//         _openai = new Groq({ apiKey: process.env.GROQ_API_KEY });
+//     }
+//     return _openai;
+// }
 function getOpenAI() {
     if (!_openai) {
-        if (!process.env.OPENAI_API_KEY) {
+        if (!process.env.GROQ_API_KEY) {
             throw new Error(
-                "OPENAI_API_KEY is not set. Add it to your .env file."
+                "GROQ_API_KEY is not set. Add it to your .env file."
             );
         }
-        _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        _openai = new Groq({ apiKey: process.env.GROQ_API_KEY });
     }
     return _openai;
 }
 
 // ── Constants ─────────────────────────────────────────────────────
-const WHISPER_MODEL = "whisper-1";
-const GPT_MODEL = "gpt-4o";
+// const WHISPER_MODEL = "whisper-1";
+// const GPT_MODEL = "gpt-4o";
+const WHISPER_MODEL = "whisper-large-v3";
+const GPT_MODEL = "llama-3.3-70b-versatile";
 
 // Whisper prompt to prime vocabulary for educational sales calls
 const WHISPER_PROMPT =
@@ -60,11 +75,29 @@ async function transcribeAudio(filePath) {
 
     const fileStream = fs.createReadStream(absolutePath);
 
+    // const response = await getOpenAI().audio.transcriptions.create({
+    //     model: WHISPER_MODEL,
+    //     file: fileStream,
+    //     prompt: WHISPER_PROMPT,
+    //     response_format: "verbose_json", // gives us language + segments
+    //     language: "en",                  // Force English/Romanized script output
+    // });
+
+    // const detectedLanguage = response.language || "en";
+    // const transcriptText = response.text || "";
+
+    // console.log(`  ✅ Transcription complete — Language: ${detectedLanguage}, Length: ${transcriptText.length} chars`);
+
+    // return {
+    //     originalText: transcriptText,
+    //     detectedLanguage,
+    //     segments: response.segments || [],
+    // };
     const response = await getOpenAI().audio.transcriptions.create({
         model: WHISPER_MODEL,
         file: fileStream,
         prompt: WHISPER_PROMPT,
-        response_format: "verbose_json", // gives us language + segments
+        response_format: "json",
     });
 
     const detectedLanguage = response.language || "en";
@@ -75,7 +108,7 @@ async function transcribeAudio(filePath) {
     return {
         originalText: transcriptText,
         detectedLanguage,
-        segments: response.segments || [],
+        segments: [],
     };
 }
 

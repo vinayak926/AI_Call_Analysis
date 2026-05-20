@@ -5,6 +5,7 @@
 
 const CallAnalysis = require("../models/CallAnalysis");
 const AudioRecording = require("../models/AudioRecording");
+const User = require("../models/User");
 const { processAudioRecording, processBatch } = require("../services/analysisWorker");
 
 // ─────────────────────────────────────────────────────────────────
@@ -462,6 +463,48 @@ const getDashboardStats = async (req, res) => {
     }
 };
 
+// ───────────────────────────────────────────────────────────────
+// POST /api/analysis/export/google-sheets
+// Admin only — bulk export all completed analyses to Google Sheet
+// ───────────────────────────────────────────────────────────────
+const exportToGoogleSheets = async (req, res) => {
+    try {
+        const { appendToGoogleSheet } = require("../services/googleSheetsService");
+
+        if (process.env.GOOGLE_SHEETS_ENABLED !== 'true') {
+            return res.status(400).json({ message: "Google Sheets integration is not enabled. Set GOOGLE_SHEETS_ENABLED=true in .env" });
+        }
+
+        const analyses = await CallAnalysis.find({ status: "completed" })
+            .populate("audioRecordingId", "originalFileName uploadedBy")
+            .lean();
+
+        if (analyses.length === 0) {
+            return res.status(200).json({ message: "No completed analyses to export.", exported: 0 });
+        }
+
+        let exported = 0;
+        let failed = 0;
+
+        for (const analysis of analyses) {
+            try {
+                const uploaderDoc = analysis.audioRecordingId?.uploadedBy
+                    ? await User.findById(analysis.audioRecordingId.uploadedBy).select("fullName").lean()
+                    : null;
+                await appendToGoogleSheet(analysis, analysis.audioRecordingId, uploaderDoc?.fullName || "");
+                exported++;
+            } catch (err) {
+                console.error(`Sheets export failed for ${analysis._id}:`, err.message);
+                failed++;
+            }
+        }
+
+        res.status(200).json({ message: "Google Sheets export complete.", exported, failed });
+    } catch (error) {
+        res.status(500).json({ message: "Export failed.", error: error.message });
+    }
+};
+
 module.exports = {
     triggerAnalysis,
     triggerAnalysisSync,
@@ -471,4 +514,5 @@ module.exports = {
     getAllAnalyses,
     reanalyse,
     getDashboardStats,
+    exportToGoogleSheets,
 };

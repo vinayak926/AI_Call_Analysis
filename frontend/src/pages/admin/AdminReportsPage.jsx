@@ -30,7 +30,7 @@ function generatePDF(calls, title, counsellorName) {
       <td>${c.sentiment || '—'}</td>
       <td>${c.status || ''}</td>
       <td>${c.studentName || '—'}</td>
-      <td>${c.courseInterest || '—'}</td>
+      <td>${c.courseInterested || '—'}</td>
       <td>${c.callSummary ? c.callSummary.slice(0, 80) + '…' : '—'}</td>
     </tr>`).join('');
 
@@ -74,8 +74,8 @@ function generateCSV(calls, filename) {
         c.sentiment || '',
         c.status || '',
         `"${c.studentName || ''}"`,
-        `"${c.courseInterest || ''}"`,
-        `"${c.studentCity || ''}"`,
+        `"${c.courseInterested || ''}"`,
+        `"${c.City || ''}"`,
         c.followUpDate || '',
         `"${(c.callSummary || '').replace(/"/g, "'")}"`,
     ].join(','));
@@ -100,8 +100,8 @@ function scoreSummary(calls) {
         positive: done.filter(c => c.sentiment === 'Positive').length,
         negative: done.filter(c => c.sentiment === 'Negative').length,
         neutral: done.filter(c => c.sentiment === 'Neutral').length,
-        avgConf: avg(done.map(c => c.scores?.confidence).filter(Boolean)),
-        avgComm: avg(done.map(c => c.scores?.communication).filter(Boolean)),
+        avgConf: avg(done.map(c => c.counsellorConfidenceScore).filter(Boolean)),
+        avgComm: avg(done.map(c => c.communicationScore).filter(Boolean)),
     };
 }
 
@@ -113,6 +113,8 @@ export default function AdminReportsPage() {
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
     const [generating, setGenerating] = useState(false);
+    const [sheetsExporting, setSheetsExporting] = useState(false);
+    const [sheetsMsg, setSheetsMsg] = useState(null);
 
     const fetchAll = async () => {
         setLoading(true);
@@ -171,6 +173,20 @@ export default function AdminReportsPage() {
             alert('No Excel report found yet. Analyse at least one call first.');
         } finally {
             setGenerating(false);
+        }
+    };
+
+    const exportToGoogleSheets = async () => {
+        setSheetsExporting(true);
+        setSheetsMsg(null);
+        try {
+            const res = await API.post('/analysis/export/google-sheets');
+            setSheetsMsg(`✅ ${res.data.exported} records exported to Google Sheets!`);
+        } catch (err) {
+            setSheetsMsg(`❌ ${err.response?.data?.message || 'Export failed'}`);
+        } finally {
+            setSheetsExporting(false);
+            setTimeout(() => setSheetsMsg(null), 5000);
         }
     };
 
@@ -266,7 +282,7 @@ export default function AdminReportsPage() {
                         </div>
 
                         {/* Download Buttons */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '28px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '16px' }}>
                             {/* PDF */}
                             <button onClick={handlePDF} disabled={generating || filteredCalls.length === 0}
                                 style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '22px', background: 'white', border: '1px solid #e8e3da', borderRadius: '18px', cursor: filteredCalls.length === 0 ? 'not-allowed' : 'pointer', textAlign: 'left', opacity: filteredCalls.length === 0 ? 0.5 : 1, transition: 'box-shadow .2s', fontFamily: 'inherit' }}>
@@ -294,19 +310,41 @@ export default function AdminReportsPage() {
                                 </div>
                                 <Download size={18} style={{ color: '#16a34a', marginLeft: 'auto' }} />
                             </button>
-                                {/* Master Excel — server-generated auto-export */}
-                                <button onClick={handleMasterExcel} disabled={generating}
-                                    style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '22px', background: 'white', border: '2px solid #bbf7d0', borderRadius: '18px', cursor: 'pointer', textAlign: 'left', transition: 'box-shadow .2s', fontFamily: 'inherit' }}>
-                                    <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                        <FileSpreadsheet size={22} style={{ color: '#15803d' }} />
-                                    </div>
-                                    <div>
-                                        <div style={{ fontWeight: '800', fontSize: '15px', color: '#1a1a1a', marginBottom: '4px' }}>Master Excel Report</div>
-                                        <div style={{ fontSize: '12px', color: '#8a8480' }}>Auto-generated .xlsx — updated after every analysis</div>
-                                        <div style={{ fontSize: '11px', color: '#15803d', fontWeight: '600', marginTop: '6px' }}>Server file · All time · colour-coded</div>
-                                    </div>
-                                    <Download size={18} style={{ color: '#15803d', marginLeft: 'auto' }} />
-                                </button>
+
+                            {/* Master Excel */}
+                            <button onClick={handleMasterExcel} disabled={generating}
+                                style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '22px', background: 'white', border: '2px solid #bbf7d0', borderRadius: '18px', cursor: 'pointer', textAlign: 'left', transition: 'box-shadow .2s', fontFamily: 'inherit' }}>
+                                <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                    <FileSpreadsheet size={22} style={{ color: '#15803d' }} />
+                                </div>
+                                <div>
+                                    <div style={{ fontWeight: '800', fontSize: '15px', color: '#1a1a1a', marginBottom: '4px' }}>Master Excel Report</div>
+                                    <div style={{ fontSize: '12px', color: '#8a8480' }}>Auto-generated .xlsx — updated after every analysis</div>
+                                    <div style={{ fontSize: '11px', color: '#15803d', fontWeight: '600', marginTop: '6px' }}>Server file · All time · colour-coded</div>
+                                </div>
+                                <Download size={18} style={{ color: '#15803d', marginLeft: 'auto' }} />
+                            </button>
+                        </div>
+
+                        {/* Google Sheets Export */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '28px' }}>
+                            <button onClick={exportToGoogleSheets} disabled={sheetsExporting} style={{
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                                padding: '10px 18px', background: sheetsExporting ? '#f0ece6' : '#0f9d58',
+                                color: 'white', border: 'none', borderRadius: '12px',
+                                cursor: sheetsExporting ? 'not-allowed' : 'pointer',
+                                fontSize: '13px', fontWeight: '700', fontFamily: 'inherit',
+                            }}>
+                                {sheetsExporting ? '⏳ Exporting...' : '📊 Export to Google Sheets'}
+                            </button>
+                            {sheetsMsg && (
+                                <div style={{
+                                    padding: '10px 16px', borderRadius: '10px',
+                                    background: sheetsMsg.startsWith('✅') ? '#f0fdf4' : '#fef2f2',
+                                    color: sheetsMsg.startsWith('✅') ? '#16a34a' : '#dc2626',
+                                    fontSize: '13px', fontWeight: '600',
+                                }}>{sheetsMsg}</div>
+                            )}
                         </div>
 
                         {/* Per-Counsellor Quick Download Section */}

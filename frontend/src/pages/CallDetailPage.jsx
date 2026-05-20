@@ -454,7 +454,7 @@ export default function CallDetailPage() {
                   <Card>
                     <CardTitle><FileText size={15} color="#6366f1" /> Transcript</CardTitle>
 
-                    {/* Tab switcher — only show if translated */}
+                    {/* Tab switcher — always show both tabs when translation exists */}
                     {isTranslated && (
                       <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
                         {['original', 'english'].map((tab) => (
@@ -471,9 +471,23 @@ export default function CallDetailPage() {
                       </div>
                     )}
 
-                    {/* Diarized view */}
-                    {call.diarizedSegments?.length > 0 && activeTab !== 'original' ? (
+                    {/* Plain text transcript — always shows full originalText or englishText */}
+                    <pre style={{
+                      fontSize: '13px', color: '#374151', lineHeight: 1.8,
+                      whiteSpace: 'pre-wrap', fontFamily: 'inherit',
+                      margin: 0, maxHeight: '420px', overflowY: 'auto',
+                      padding: '16px', background: '#f8fafc',
+                      borderRadius: '10px', border: '1px solid #e2e8f0',
+                    }}>
+                      {activeTab === 'english'
+                        ? (call.transcript?.englishText || 'No English translation available.')
+                        : (call.transcript?.originalText || call.transcript?.englishText || 'No transcript available.')}
+                    </pre>
+
+                    {/* Diarized speaker view — shown below transcript as a separate section */}
+                    {call.diarizedSegments?.length > 0 && (
                       <>
+                        <p style={{ fontSize: '12px', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', margin: '20px 0 10px' }}>Speaker View</p>
                         <div style={{
                           maxHeight: '500px', overflowY: 'auto', display: 'flex',
                           flexDirection: 'column', gap: '12px', padding: '16px',
@@ -519,18 +533,6 @@ export default function CallDetailPage() {
                           );
                         })()}
                       </>
-                    ) : (
-                      <pre style={{
-                        fontSize: '13px', color: '#374151', lineHeight: 1.8,
-                        whiteSpace: 'pre-wrap', fontFamily: 'inherit',
-                        margin: 0, maxHeight: '420px', overflowY: 'auto',
-                        padding: '16px', background: '#f8fafc',
-                        borderRadius: '10px', border: '1px solid #e2e8f0',
-                      }}>
-                        {activeTab === 'english' && call.transcript?.englishText
-                          ? call.transcript.englishText
-                          : (call.transcript?.originalText || call.transcript?.englishText || 'No transcript available.')}
-                      </pre>
                     )}
                   </Card>
                 )}

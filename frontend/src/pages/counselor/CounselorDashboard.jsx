@@ -156,6 +156,55 @@ export default function CounselorDashboard() {
                             </div>
                         </div>
 
+                        {/* Lead Score Leaderboard */}
+                        <div style={{ background: 'white', borderRadius: '18px', border: '1px solid #e8e3da', padding: '22px', marginBottom: '24px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                            <h3 style={{ fontSize: '14px', fontWeight: '700', color: '#1a1a1a', margin: 0 }}>🏆 My Top Leads by Score</h3>
+                            <Link to="/calls" style={{ fontSize: '12px', color: '#6366f1', fontWeight: '700', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>View all <ChevronRight size={13} /></Link>
+                          </div>
+                          {completed.length === 0 ? (
+                            <p style={{ color: '#aaa', fontSize: '13px', margin: 0, textAlign: 'center', padding: '20px 0' }}>No analysed calls yet</p>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                              {[...completed]
+                                .sort((a, b) => (b.leadScore || 0) - (a.leadScore || 0))
+                                .slice(0, 5)
+                                .map((c, i) => {
+                                  const score = c.leadScore || 0;
+                                  const barColor = score >= 8 ? '#22c55e' : score >= 5 ? '#f59e0b' : '#ef4444';
+                                  const badgeBg = score >= 8 ? '#f0fdf4' : score >= 5 ? '#fffbeb' : '#fef2f2';
+                                  return (
+                                    <div key={c._id} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                      <span style={{
+                                        width: '24px', height: '24px', borderRadius: '50%', flexShrink: 0,
+                                        background: i === 0 ? '#fbbf24' : i === 1 ? '#9ca3af' : i === 2 ? '#b45309' : '#f0ece6',
+                                        color: i < 3 ? 'white' : '#6b6560',
+                                        fontSize: '11px', fontWeight: '800',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                      }}>{i + 1}</span>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontWeight: '600', fontSize: '13px', color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                          {c.studentName || c.originalFileName || 'Unknown'}
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: '#aaa', marginTop: '2px' }}>
+                                          {c.courseInterested || '—'} · {c.sentiment || '—'}
+                                        </div>
+                                        <div style={{ marginTop: '5px', height: '5px', borderRadius: '3px', background: '#f0ece6', overflow: 'hidden' }}>
+                                          <div style={{ height: '100%', width: `${score * 10}%`, background: barColor, borderRadius: '3px', transition: 'width 0.5s ease' }} />
+                                        </div>
+                                      </div>
+                                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
+                                        <span style={{ background: badgeBg, color: barColor, fontWeight: '800', fontSize: '16px', padding: '4px 10px', borderRadius: '10px' }}>{score}</span>
+                                        <span style={{ fontSize: '9px', color: '#aaa', fontWeight: '600' }}>/ 10</span>
+                                      </div>
+                                      <Link to={`/calls/${c._id}`} style={{ color: '#6366f1', fontWeight: '700', textDecoration: 'none', fontSize: '12px', flexShrink: 0 }}>View →</Link>
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          )}
+                        </div>
+
                         {/* Recent calls */}
                         <div style={{ background: 'white', borderRadius: '18px', border: '1px solid #e8e3da', padding: '22px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
