@@ -399,6 +399,7 @@ const getDashboardStats = async (req, res) => {
             avgScores,
             followUpCount,
             topConcerns,
+            counsellorLeaderboard
         ] = await Promise.all([
             // Total completed analyses
             CallAnalysis.countDocuments({ status: "completed" }),
@@ -435,6 +436,20 @@ const getDashboardStats = async (req, res) => {
                 { $sort: { count: -1 } },
                 { $limit: 10 },
             ]),
+
+            // NEW — counsellor leaderboard
+            CallAnalysis.aggregate([
+                { $match: { status: "completed", counsellorName: { $ne: null } } },
+                { $group: {
+                    _id: "$counsellorName",
+                    totalCalls: { $sum: 1 },
+                    avgLeadScore: { $avg: "$leadScore" },
+                    hotLeads: { $sum: { $cond: [{ $gte: ["$leadScore", 8] }, 1, 0] } },
+                    avgClosing: { $avg: "$closingProbability" },
+                }},
+                { $sort: { avgLeadScore: -1 } },
+                { $limit: 10 },
+            ]),
         ]);
 
         // Format sentiment counts
@@ -457,6 +472,13 @@ const getDashboardStats = async (req, res) => {
                 closingProbability: Math.round((scores.avgClosingProbability || 0) * 10) / 10,
             },
             topConcerns: topConcerns.map((c) => ({ concern: c._id, count: c.count })),
+            counsellorLeaderboard: counsellorLeaderboard.map(c => ({
+                name: c._id,
+                totalCalls: c.totalCalls,
+                avgLeadScore: Math.round(c.avgLeadScore * 10) / 10,
+                hotLeads: c.hotLeads,
+                avgClosing: Math.round(c.avgClosing * 10) / 10,
+            })),
         });
     } catch (error) {
         res.status(500).json({ message: "Server error.", error: error.message });

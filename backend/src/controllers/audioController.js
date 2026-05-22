@@ -60,7 +60,8 @@ exports.uploadAudio = async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 exports.getRecordings = async (req, res) => {
     try {
-        const isAdmin = ["super_admin", "admin"].includes(req.user.role);
+        // const isAdmin = ["super_admin", "admin"].includes(req.user.role);
+        const isAdmin = ["super_admin", "company_admin"].includes(req.user.role);
         const filter = isAdmin ? {} : { uploadedBy: req.user._id };
 
         const recordings = await AudioRecording.find(filter)
@@ -89,7 +90,8 @@ exports.getRecordingById = async (req, res) => {
         }
 
         // Non-admins can only see their own recordings
-        const isAdmin = ["super_admin", "admin"].includes(req.user.role);
+        // const isAdmin = ["super_admin", "admin"].includes(req.user.role);
+        const isAdmin = ["super_admin", "company_admin"].includes(req.user.role);
         if (
             !isAdmin &&
             recording.uploadedBy._id.toString() !== req.user._id.toString()
@@ -183,7 +185,8 @@ exports.deleteRecording = async (req, res) => {
             return res.status(404).json({ message: "Recording not found." });
         }
 
-        const isAdmin = ["super_admin", "admin"].includes(req.user.role);
+        // const isAdmin = ["super_admin", "admin"].includes(req.user.role);
+        const isAdmin = ["super_admin", "company_admin"].includes(req.user.role);
         if (
             !isAdmin &&
             recording.uploadedBy.toString() !== req.user._id.toString()

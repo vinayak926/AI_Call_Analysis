@@ -54,6 +54,7 @@ export default function CounselorDashboard() {
 
     const completed = calls.filter(c => c.status === 'completed');
     const pending = calls.filter(c => c.status === 'pending');
+    const followUps = completed.filter(c => c.followUpRequired === true);
 
     const avgLead = completed.length
         ? (completed.reduce((s, c) => s + (c.leadScore || 0), 0) / completed.length).toFixed(1)
@@ -112,6 +113,7 @@ export default function CounselorDashboard() {
                             <KPICard label="Analysed" value={completed.length} sub={`${calls.length ? Math.round(completed.length / calls.length * 100) : 0}%`} icon={TrendingUp} color="#22c55e" bg="#f0fdf4" />
                             <KPICard label="Avg Lead Score" value={avgLead} sub="out of 10" icon={Target} color="#f59e0b" bg="#fffbeb" />
                             <KPICard label="Pending" value={pending.length} sub="to process" icon={Clock} color="#8b5cf6" bg="#f5f3ff" />
+                            <KPICard label="Follow-ups Due" value={followUps.length} sub="need callback" icon={Phone} color="#ef4444" bg="#fef2f2" />
                         </div>
 
                         {/* Sentiment row */}

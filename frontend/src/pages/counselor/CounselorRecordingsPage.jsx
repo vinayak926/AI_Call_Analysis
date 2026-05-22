@@ -55,11 +55,31 @@ export default function CounselorRecordingsPage() {
         } catch { alert('Delete failed.'); }
     };
 
+    // const handleAnalyse = async (id) => {
+    //     setAnalysingId(id);
+    //     try { await API.post(`/audio/${id}/analyse`); }
+    //     catch { }
+    //     setTimeout(() => { fetchRecordings(); setAnalysingId(null); }, 2500);
+    // };
+
     const handleAnalyse = async (id) => {
         setAnalysingId(id);
-        try { await API.post(`/audio/${id}/analyse`); }
-        catch { }
-        setTimeout(() => { fetchRecordings(); setAnalysingId(null); }, 2500);
+        try {
+            await API.post(`/audio/${id}/analyse`);
+            const poll = setInterval(async () => {
+                try {
+                    const r = await API.get(`/calls/${id}/status`);
+                    const s = r.data.analysisStatus;
+                    if (s === 'completed' || s === 'failed') {
+                        clearInterval(poll);
+                        setAnalysingId(null);
+                        fetchRecordings();
+                    }
+                } catch { clearInterval(poll); setAnalysingId(null); }
+            }, 4000);
+        } catch {
+            setAnalysingId(null);
+        }
     };
 
     const filtered = recordings.filter(r => {

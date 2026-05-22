@@ -44,6 +44,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [calls, setCalls] = useState([]);
   const [users, setUsers] = useState([]);
+  const [dashStats, setDashStats] = useState(null);
   const [error, setError] = useState(null);
   const [chartDays, setChartDays] = useState(14);
   const [chartRange, setChartRange] = useState('14d');
@@ -51,12 +52,14 @@ export default function AdminDashboard() {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [callsRes, usersRes] = await Promise.all([
+      const [callsRes, usersRes, statsRes] = await Promise.all([
         API.get('/calls'),
         API.get('/auth/users'),
+        API.get('/analysis/dashboard/stats'),
       ]);
       setCalls(callsRes.data.calls || []);
       setUsers(usersRes.data.users || []);
+      setDashStats(statsRes.data || null);
     } catch (e) { setError('Failed to load data'); }
     finally { setLoading(false); }
   };
@@ -68,9 +71,11 @@ export default function AdminDashboard() {
   const pending = calls.filter(c => c.status === 'pending');
   const failed = calls.filter(c => c.status === 'failed');
 
-  const avgLead = completed.length
-    ? (completed.reduce((s, c) => s + (c.leadScore || 0), 0) / completed.length).toFixed(1)
-    : '—';
+  const avgLead = dashStats?.averages?.leadScore
+    ? dashStats.averages.leadScore
+    : completed.length
+      ? (completed.reduce((s, c) => s + (c.leadScore || 0), 0) / completed.length).toFixed(1)
+      : '—';
 
   const sentCounts = { Positive: 0, Negative: 0, Neutral: 0 };
   completed.forEach(c => { if (c.sentiment && sentCounts[c.sentiment] !== undefined) sentCounts[c.sentiment]++; });
@@ -292,6 +297,26 @@ export default function AdminDashboard() {
                 )}
               </div>
             </div>
+
+            
+            {dashStats?.topConcerns?.length > 0 && (
+              <div style={{ background: 'white', borderRadius: '20px', border: '1px solid #e8e3da', padding: '24px', marginBottom: '20px' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1a1a1a', margin: '0 0 16px' }}>
+                  🔥 Top Student Concerns
+                </h3>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {dashStats.topConcerns.map((c, i) => (
+                    <span key={i} style={{
+                      padding: '6px 14px', borderRadius: '20px', fontSize: '13px',
+                      background: '#fef3c7', color: '#92400e', fontWeight: '600',
+                      border: '1px solid #fde68a',
+                    }}>
+                      {c.concern} <span style={{ opacity: 0.6 }}>({c.count})</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Recent calls */}
             <div style={{ background: 'white', borderRadius: '20px', border: '1px solid #e8e3da', padding: '24px' }}>
