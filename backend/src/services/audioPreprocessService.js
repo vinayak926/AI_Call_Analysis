@@ -127,10 +127,16 @@ async function preprocessAudio(filePath) {
     const baseName = path.basename(absolutePath, ext);
     const cleanPath = path.join(dir, `${baseName}_clean.mp3`);
 
-    // ── Step 5: Skip if clean file already exists (re-analysis) ──
-    if (fs.existsSync(cleanPath)) {
-        console.log("  ⏭️  Clean file already exists — skipping ffmpeg");
+    // ── Step 5: Skip if clean file already exists and is valid ──
+    const cleanFileExists = fs.existsSync(cleanPath);
+    const cleanFileSize = cleanFileExists ? fs.statSync(cleanPath).size : 0;
+    if (cleanFileExists && cleanFileSize > 10240) {
+        console.log("  ⏭️  Clean file already exists and valid — skipping ffmpeg");
         return { cleanPath, durationSeconds, wasConverted: false };
+    }
+    if (cleanFileExists && cleanFileSize <= 10240) {
+        console.log("  ⚠️  Clean file found but appears corrupt — reprocessing...");
+        fs.unlinkSync(cleanPath);
     }
 
     // ── Step 6: Run ffmpeg preprocessing ─────────────────────────

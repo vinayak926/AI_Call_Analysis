@@ -264,7 +264,7 @@ export default function CallDetailPage() {
   const statusSt = statusStyles[call.status] || statusStyles.pending;
 
   const hasTranscript = call.transcript?.originalText || call.transcript?.englishText;
-  const isTranslated  = call.transcript?.detectedLanguage !== 'en' && call.transcript?.englishText;
+  const hasBothTranscripts = !!(call.transcript?.originalText && call.transcript?.englishText);
 
   return (
     <AppLayout navItems={navItems} panelLabel={panelLabel}>
@@ -454,8 +454,8 @@ export default function CallDetailPage() {
                   <Card>
                     <CardTitle><FileText size={15} color="#6366f1" /> Transcript</CardTitle>
 
-                    {/* Tab switcher — always show both tabs when translation exists */}
-                    {isTranslated && (
+                    {/* Tab switcher — show when both original and english text exist */}
+                    {hasBothTranscripts && (
                       <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
                         {['original', 'english'].map((tab) => (
                           <button key={tab} onClick={() => setActiveTab(tab)} style={{
@@ -464,8 +464,11 @@ export default function CallDetailPage() {
                             border: 'none',
                             background: activeTab === tab ? '#6366f1' : '#f1f5f9',
                             color: activeTab === tab ? '#fff' : '#64748b',
+                            transition: 'all 0.15s ease',
                           }}>
-                            {tab === 'original' ? `Original (${call.transcript?.detectedLanguage?.toUpperCase()})` : 'English'}
+                            {tab === 'original'
+                              ? `Original (${call.transcript?.detectedLanguage?.toUpperCase() || 'HINDI'})`
+                              : 'English'}
                           </button>
                         ))}
                       </div>
@@ -475,14 +478,21 @@ export default function CallDetailPage() {
                     <pre style={{
                       fontSize: '13px', color: '#374151', lineHeight: 1.8,
                       whiteSpace: 'pre-wrap', fontFamily: 'inherit',
-                      margin: 0, maxHeight: '420px', overflowY: 'auto',
+                      margin: 0, maxHeight: '600px', overflowY: 'auto',
                       padding: '16px', background: '#f8fafc',
                       borderRadius: '10px', border: '1px solid #e2e8f0',
                     }}>
                       {activeTab === 'english'
                         ? (call.transcript?.englishText || 'No English translation available.')
-                        : (call.transcript?.originalText || call.transcript?.englishText || 'No transcript available.')}
+                        : (call.transcript?.originalText || 'No original transcript available.')}
                     </pre>
+
+                    {/* Show a note when only originalText exists (translation still pending) */}
+                    {!hasBothTranscripts && call.transcript?.originalText && !call.transcript?.englishText && (
+                      <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '8px', fontStyle: 'italic' }}>
+                        ⏳ English translation not yet available for this call.
+                      </p>
+                    )}
 
                     {/* Diarized speaker view — shown below transcript as a separate section */}
                     {call.diarizedSegments?.length > 0 && (

@@ -11,6 +11,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { spawn } = require("child_process");
 // const OpenAI = require("openai");
 const Groq = require("groq-sdk");
 const AudioRecording = require("../models/AudioRecording");
@@ -46,70 +47,78 @@ function getOpenAI() {
         _openai = new Groq({ apiKey: process.env.GROQ_API_KEY });
     }
     return _openai;
+
+    
 }
 
 // ── Constants ─────────────────────────────────────────────────────
-// const WHISPER_MODEL = "whisper-1";
-// const GPT_MODEL = "gpt-4o";
-const WHISPER_MODEL = "whisper-large-v3";
+// const WHISPER_MODEL = "faster-whisper-medium";
+const WHISPER_MODEL = "faster-whisper-large-v2";
 const GPT_MODEL = "llama-3.3-70b-versatile";
 
-// Whisper prompt to prime vocabulary for educational sales calls
-const WHISPER_PROMPT =
-    "Sales call recording. Possible speakers: Sales Executive, Student. " +
-    "Topics: Data Science, Python, Full Stack, Digital Marketing, " +
-    "Machine Learning, MBA, courses, fees, placement, admissions. " +
-    "Common names: Rahul, Priya, Ankit, Sneha, Amit, Neha, Pooja, Ravi.";
-
 // ─────────────────────────────────────────────────────────────────
-// STEP 1 — Transcribe audio using OpenAI Whisper
+// STEP 1 — Transcribe audio using faster-whisper (local Python)
 // ─────────────────────────────────────────────────────────────────
 async function transcribeAudio(filePath) {
-    console.log(`  📝 [Step 1] Transcribing: ${path.basename(filePath)}`);
+    console.log(`  📝 [Step 1] Transcribing with faster-whisper: ${path.basename(filePath)}`);
 
     const absolutePath = path.resolve(filePath);
-
     if (!fs.existsSync(absolutePath)) {
         throw new Error(`Audio file not found: ${absolutePath}`);
     }
 
-    const fileStream = fs.createReadStream(absolutePath);
+    const scriptPath = path.join(__dirname, "whisper_transcribe.py");
+    const pythonCmds = process.platform === "win32" ? ["python", "python3"] : ["python3", "python"];
 
-    // const response = await getOpenAI().audio.transcriptions.create({
-    //     model: WHISPER_MODEL,
-    //     file: fileStream,
-    //     prompt: WHISPER_PROMPT,
-    //     response_format: "verbose_json", // gives us language + segments
-    //     language: "en",                  // Force English/Romanized script output
-    // });
+    const trySpawn = (cmds) => new Promise((resolve, reject) => {
+        if (cmds.length === 0) {
+            return reject(new Error("Python not found. Install Python and ensure it is in your PATH."));
+        }
 
-    // const detectedLanguage = response.language || "en";
-    // const transcriptText = response.text || "";
+        const [cmd, ...rest] = cmds;
+        const proc = spawn(cmd, [scriptPath, absolutePath]);
 
-    // console.log(`  ✅ Transcription complete — Language: ${detectedLanguage}, Length: ${transcriptText.length} chars`);
+        let stdout = "";
+        let stderr = "";
 
-    // return {
-    //     originalText: transcriptText,
-    //     detectedLanguage,
-    //     segments: response.segments || [],
-    // };
-    const response = await getOpenAI().audio.transcriptions.create({
-        model: WHISPER_MODEL,
-        file: fileStream,
-        prompt: WHISPER_PROMPT,
-        response_format: "json",
+        proc.stdout.on("data", (data) => { stdout += data.toString(); });
+        proc.stderr.on("data", (data) => { stderr += data.toString(); });
+
+        // Kill Python process if it takes more than 15 minutes
+        const timeoutMs = 15 * 60 * 1000;
+        const timeoutHandle = setTimeout(() => {
+            proc.kill("SIGKILL");
+            reject(new Error(`Whisper transcription timed out after 15 minutes for file: ${path.basename(absolutePath)}`));
+        }, timeoutMs);
+
+        proc.on("error", () => {
+            clearTimeout(timeoutHandle);
+            trySpawn(rest).then(resolve).catch(reject);
+        });
+
+        proc.on("close", (code) => {
+            clearTimeout(timeoutHandle);
+            if (code === 9009) return trySpawn(rest).then(resolve).catch(reject);
+            if (code !== 0) {
+                // Only show last 500 chars of stderr to keep error message clean
+                const errMsg = stderr.slice(-500).trim();
+                return reject(new Error(`Whisper script failed (exit ${code}): ${errMsg}`));
+            }
+            if (stderr) {
+                console.log(`  ℹ️  [Whisper] warnings (non-fatal): ${stderr.slice(0, 100)}...`);
+            }
+            try {
+                const result = JSON.parse(stdout.trim());
+                if (result.error) return reject(new Error(result.error));
+                console.log(`  ✅ Transcription complete — Language: ${result.detectedLanguage}, Length: ${result.originalText.length} chars`);
+                resolve(result);
+            } catch (e) {
+                reject(new Error(`Failed to parse whisper output: ${e.message}`));
+            }
+        });
     });
 
-    const detectedLanguage = response.language || "en";
-    const transcriptText = response.text || "";
-
-    console.log(`  ✅ Transcription complete — Language: ${detectedLanguage}, Length: ${transcriptText.length} chars`);
-
-    return {
-        originalText: transcriptText,
-        detectedLanguage,
-        segments: [],
-    };
+    return trySpawn(pythonCmds);
 }
 
 // ─────────────────────────────────────────────────────────────────

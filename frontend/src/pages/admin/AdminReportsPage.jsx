@@ -75,7 +75,7 @@ function generateCSV(calls, filename) {
         c.status || '',
         `"${c.studentName || ''}"`,
         `"${c.courseInterested || ''}"`,
-        `"${c.City || ''}"`,
+        `"${c.city || ''}"`,
         c.followUpDate || '',
         `"${(c.callSummary || '').replace(/"/g, "'")}"`,
     ].join(','));
