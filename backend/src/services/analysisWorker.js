@@ -1,14 +1,3 @@
-// backend/src/services/analysisWorker.js
-// ─────────────────────────────────────────────────────────────────
-// AI Analysis Worker — Full Pipeline
-//
-// Pipeline:  Audio File → Whisper STT → Translation → GPT-4o Analysis → Save
-//
-// Usage:
-//   const { processAudioRecording } = require("./services/analysisWorker");
-//   await processAudioRecording(audioRecordingId);
-// ─────────────────────────────────────────────────────────────────
-
 const fs = require("fs");
 const path = require("path");
 // const OpenAI = require("openai");
@@ -93,22 +82,47 @@ async function transcribeAudio(filePath) {
     //     detectedLanguage,
     //     segments: response.segments || [],
     // };
+    // ── OLD CODE (kept for reference) ────────────────────────────────
+    // response_format: "json" returns only the full text — NO segments.
+    // This means diarizeSegments() always received an empty array and
+    // could never label any speaker turns. Replaced below.
+    //
+    // const response = await getOpenAI().audio.transcriptions.create({
+    //     model: WHISPER_MODEL,
+    //     file: fileStream,
+    //     prompt: WHISPER_PROMPT,
+    //     response_format: "json",          // ← problem: no segments
+    // });
+    // return {
+    //     originalText: response.text || "",
+    //     detectedLanguage: response.language || "en",
+    //     segments: [],                     // ← always empty!
+    // };
+    // ─────────────────────────────────────────────────────────────────
+
+    // ── NEW CODE ──────────────────────────────────────────────────────
+    // verbose_json returns word-level segments with start/end timestamps.
+    // These segments are what diarizeSegments() needs to label speakers.
+    // Groq supports verbose_json for whisper-large-v3.
     const response = await getOpenAI().audio.transcriptions.create({
         model: WHISPER_MODEL,
         file: fileStream,
         prompt: WHISPER_PROMPT,
-        response_format: "json",
+        response_format: "verbose_json",    // ← returns segments[]
+        timestamp_granularities: ["segment"], // segment-level is enough for diarization
     });
 
     const detectedLanguage = response.language || "en";
     const transcriptText = response.text || "";
+    // Each segment: { id, start, end, text, ... }
+    const segments = Array.isArray(response.segments) ? response.segments : [];
 
-    console.log(`  ✅ Transcription complete — Language: ${detectedLanguage}, Length: ${transcriptText.length} chars`);
+    console.log(`  ✅ Transcription complete — Language: ${detectedLanguage}, Length: ${transcriptText.length} chars, Segments: ${segments.length}`);
 
     return {
         originalText: transcriptText,
         detectedLanguage,
-        segments: [],
+        segments,                           // ← real timestamps now flow to diarization
     };
 }
 
@@ -283,38 +297,54 @@ function sanitiseAnalysis(raw) {
     };
 }
 
+// ─────────────────────────────────────────────────────────────────
+// STEP 4b — Speaker Diarization (Groq LLM based)
+//
+// Whisper verbose_json se milne wale segments (start, end, text) ko
+// Groq ke Llama model ko dete hain. Woh text padhke decide karta hai
+// kaun COUNSELLOR hai kaun STUDENT.
+//
+// Groq ki FREE tier use ho rahi hai — koi extra API ya cost nahi.
+// ─────────────────────────────────────────────────────────────────
 async function diarizeSegments(segments, counsellorName, studentName) {
     if (!segments || segments.length === 0) return [];
 
     const MAX_SEGMENTS = 80;
-
-    // Sample evenly if over the limit — pick every Nth segment
     let sampled = segments;
-    let sampledIndices = segments.map((_, i) => i); // original index of each sampled segment
+    let sampledIndices = segments.map((_, i) => i);
+
+    // 80 se zyada segments hain toh evenly sample karo
     if (segments.length > MAX_SEGMENTS) {
         const step = segments.length / MAX_SEGMENTS;
-        sampledIndices = Array.from({ length: MAX_SEGMENTS }, (_, i) => Math.min(Math.floor(i * step), segments.length - 1));
+        sampledIndices = Array.from({ length: MAX_SEGMENTS }, (_, i) =>
+            Math.min(Math.floor(i * step), segments.length - 1)
+        );
         sampled = sampledIndices.map(i => segments[i]);
         console.log(`  🎤 [Diarize] ${segments.length} segments → sampled ${sampled.length} evenly`);
     } else {
-        console.log(`  🎤 [Diarize] Assigning speaker labels to ${segments.length} segments...`);
+        console.log(`  🎤 [Diarize] Labeling ${segments.length} segments with Groq LLM...`);
     }
 
-    const segmentText = sampled.map((s, i) => `[${i}] ${s.text.trim()}`).join('\n');
+    const segmentText = sampled.map((s, i) => `[${i}] ${s.text.trim()}`).join("\n");
 
     const response = await getOpenAI().chat.completions.create({
         model: GPT_MODEL,
         temperature: 0.1,
         max_tokens: 1000,
-        response_format: { type: 'json_object' },
+        response_format: { type: "json_object" },
         messages: [
             {
-                role: 'system',
-                content: 'You are a speaker diarization expert. Given transcript segments from a sales call between a counsellor and a student, assign each segment to either COUNSELLOR or STUDENT. Return ONLY a JSON object with key "labels" which is an array of strings, one per segment, each being either "COUNSELLOR" or "STUDENT". Counsellors typically introduce the course, handle objections, ask closing questions. Students ask questions, raise concerns, respond to pitches.',
+                role: "system",
+                content:
+                    'You are a speaker diarization expert. Given transcript segments from a sales call ' +
+                    'between a counsellor and a student, assign each segment to COUNSELLOR or STUDENT. ' +
+                    'Return ONLY JSON: {"labels": ["COUNSELLOR", "STUDENT", ...]}. ' +
+                    'Counsellors introduce courses, handle objections, ask closing questions. ' +
+                    'Students ask about fees, placements, and timings.',
             },
             {
-                role: 'user',
-                content: `Counsellor name (if known): ${counsellorName || 'unknown'}\nStudent name (if known): ${studentName || 'unknown'}\n\nSegments:\n${segmentText}\n\nReturn JSON: {"labels": ["COUNSELLOR", "STUDENT", ...]}`,
+                role: "user",
+                content: `Counsellor: ${counsellorName || "unknown"}\nStudent: ${studentName || "unknown"}\n\nSegments:\n${segmentText}\n\nReturn JSON: {"labels": [...]}`,
             },
         ],
     });
@@ -322,23 +352,26 @@ async function diarizeSegments(segments, counsellorName, studentName) {
     const raw = JSON.parse(response.choices[0].message.content.trim());
     let labels = Array.isArray(raw.labels) ? raw.labels : [];
 
-    // Safety: pad missing labels with 'COUNSELLOR' if GPT returned fewer than expected
-    while (labels.length < sampled.length) {
-        labels.push('COUNSELLOR');
-    }
+    // Agar LLM ne kam labels diye toh COUNSELLOR se pad karo
+    while (labels.length < sampled.length) labels.push("COUNSELLOR");
 
-    // Build a label map keyed by original segment index
+    // Original index → label mapping
     const labelMap = {};
     sampledIndices.forEach((origIdx, sampledIdx) => {
-        labelMap[origIdx] = labels[sampledIdx] === 'COUNSELLOR' ? 'COUNSELLOR' : 'STUDENT';
+        labelMap[origIdx] = labels[sampledIdx] === "COUNSELLOR" ? "COUNSELLOR" : "STUDENT";
     });
 
-    // For unsampled segments, inherit the label from the nearest sampled neighbour
+    // Jo segments sample nahi hue unhe nearest neighbour se label do
     return segments.map((seg, i) => ({
         start: seg.start,
         end: seg.end,
         text: seg.text.trim(),
-        speaker: labelMap[i] ?? (labelMap[sampledIndices.reduce((prev, curr) => Math.abs(curr - i) < Math.abs(prev - i) ? curr : prev)] ?? 'COUNSELLOR'),
+        speaker:
+            labelMap[i] ??
+            labelMap[sampledIndices.reduce((prev, curr) =>
+                Math.abs(curr - i) < Math.abs(prev - i) ? curr : prev
+            )] ??
+            "COUNSELLOR",
     }));
 }
 
@@ -449,6 +482,7 @@ async function processAudioRecording(audioRecordingId) {
         // ────────────────────────────────────────────────────────
         let diarizedSegments = [];
         try {
+            // Groq Llama se segments ko label karo (COUNSELLOR / STUDENT)
             diarizedSegments = await diarizeSegments(
                 transcription.segments,
                 analysis.counsellor_name,

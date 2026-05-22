@@ -298,7 +298,7 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            
+
             {dashStats?.topConcerns?.length > 0 && (
               <div style={{ background: 'white', borderRadius: '20px', border: '1px solid #e8e3da', padding: '24px', marginBottom: '20px' }}>
                 <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1a1a1a', margin: '0 0 16px' }}>
