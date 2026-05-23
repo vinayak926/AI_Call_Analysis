@@ -4,7 +4,7 @@ import AppLayout from '../../components/Layout/AppLayout';
 import API from '../../services/api';
 import { getAudioStreamUrl } from '../../services/api';
 import {
-    LayoutDashboard, Users, Phone, Mic, FileText,
+    LayoutDashboard, Users, Phone, Mic, FileText, Target,
     Search, RefreshCw, Play, Pause, Trash2, Filter,
     Clock, CheckCircle, AlertTriangle, Loader,
 } from 'lucide-react';
@@ -16,6 +16,8 @@ const ADMIN_NAV = [
     { path: '/admin/recordings', label: 'Recordings', icon: Mic },
     { path: '/admin/users', label: 'Users', icon: Users },
     { path: '/admin/reports', label: 'Reports', icon: FileText },
+    { path: '/admin/lead-scoring', label: 'Lead Scoring', icon: Target },   
+    { path: '/admin/search', label: 'Search', icon: Search },
 ];
 
 const STATUS_ICON = {

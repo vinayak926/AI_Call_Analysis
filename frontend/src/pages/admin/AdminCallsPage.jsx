@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import AppLayout from '../../components/Layout/AppLayout';
 import API from '../../services/api';
 import {
-    LayoutDashboard, Users, Phone, Mic, FileText,
+    LayoutDashboard, Users, Phone, Mic, FileText,Target,
     Search, RefreshCw, FileAudio, Clock, Filter,
 } from 'lucide-react';
 import NotificationBell from '../../components/NotificationBell';
@@ -14,7 +14,9 @@ const ADMIN_NAV = [
     { path: '/admin/calls', label: 'All Calls', icon: Phone },
     { path: '/admin/recordings', label: 'Recordings', icon: Mic },
     { path: '/admin/users', label: 'Users', icon: Users },
-    { path: '/admin/reports', label: 'Reports', icon: FileText },
+    { path: '/admin/reports', label: 'Reports', icon: FileText }, 
+    { path: '/admin/lead-scoring', label: 'Lead Scoring', icon: Target },   
+    { path: '/admin/search', label: 'Search', icon: Search },
 ];
 
 const STATUS_CFG = {

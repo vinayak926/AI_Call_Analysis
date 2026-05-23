@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import AppLayout from '../../components/Layout/AppLayout';
 import API from '../../services/api';
 import {
-    LayoutDashboard, Users, Phone, Mic, FileText,
+    LayoutDashboard, Users, Phone, Mic, FileText, Target, Search,
     Download, RefreshCw, Filter, FileSpreadsheet,
     BarChart2, Calendar, User,
 } from 'lucide-react';
@@ -15,7 +15,10 @@ const ADMIN_NAV = [
     { path: '/admin/recordings', label: 'Recordings', icon: Mic },
     { path: '/admin/users', label: 'Users', icon: Users },
     { path: '/admin/reports', label: 'Reports', icon: FileText },
+    { path: '/admin/lead-scoring', label: 'Lead Scoring', icon: Target },
+    { path: '/admin/search', label: 'Search', icon: Search },
 ];
+       
 
 // ── Pure-JS PDF generator (no external lib needed) ────────────────
 function generatePDF(calls, title, counsellorName) {
