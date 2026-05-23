@@ -5,6 +5,7 @@ import { Play, Pause, Volume2, VolumeX, RotateCcw } from "lucide-react";
 
 export default function AudioPlayer({ src, fileName }) {
     const audioRef = useRef(null);
+    const playPromiseRef = useRef(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
@@ -45,20 +46,26 @@ export default function AudioPlayer({ src, fileName }) {
     }, [src]);
 
     const togglePlay = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (isPlaying) {
-        audio.pause();
-        setIsPlaying(false);
-    } else {
-        audio.play()
-            .then(() => setIsPlaying(true))   
-            .catch(() => {
-                setError("Playback was blocked by the browser.");
-                setIsPlaying(false);
-            });
-    }
-};
+        const audio = audioRef.current;
+        if (!audio) return;
+        if (isPlaying) {
+            if (playPromiseRef.current) {
+                playPromiseRef.current.then(() => { audio.pause(); }).catch(() => {});
+            } else {
+                audio.pause();
+            }
+            setIsPlaying(false);
+        } else {
+            playPromiseRef.current = audio.play();
+            playPromiseRef.current
+                .then(() => { setIsPlaying(true); playPromiseRef.current = null; })
+                .catch((e) => {
+                    if (e.name !== 'AbortError') setError('Playback was blocked by the browser.');
+                    setIsPlaying(false);
+                    playPromiseRef.current = null;
+                });
+        }
+    };
 
     const handleSeek = (e) => {
         const audio = audioRef.current;
@@ -86,9 +93,22 @@ export default function AudioPlayer({ src, fileName }) {
     const restart = () => {
         const audio = audioRef.current;
         if (!audio) return;
-        audio.currentTime = 0;
-        audio.play();
-        setIsPlaying(true);
+        const doRestart = () => {
+            audio.currentTime = 0;
+            playPromiseRef.current = audio.play();
+            playPromiseRef.current
+                .then(() => { setIsPlaying(true); playPromiseRef.current = null; })
+                .catch((e) => {
+                    if (e.name !== 'AbortError') setError('Playback was blocked by the browser.');
+                    setIsPlaying(false);
+                    playPromiseRef.current = null;
+                });
+        };
+        if (playPromiseRef.current) {
+            playPromiseRef.current.then(() => { audio.pause(); doRestart(); }).catch(() => { doRestart(); });
+        } else {
+            doRestart();
+        }
     };
 
     const formatTime = (secs) => {

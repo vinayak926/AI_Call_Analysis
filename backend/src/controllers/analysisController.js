@@ -399,7 +399,8 @@ const getDashboardStats = async (req, res) => {
             avgScores,
             followUpCount,
             topConcerns,
-            counsellorLeaderboard
+            counsellorLeaderboard,
+            concernFlagAgg
         ] = await Promise.all([
             // Total completed analyses
             CallAnalysis.countDocuments({ status: "completed" }),
@@ -437,18 +438,33 @@ const getDashboardStats = async (req, res) => {
                 { $limit: 10 },
             ]),
 
-            // NEW — counsellor leaderboard
             CallAnalysis.aggregate([
                 { $match: { status: "completed", counsellorName: { $ne: null } } },
-                { $group: {
-                    _id: "$counsellorName",
-                    totalCalls: { $sum: 1 },
-                    avgLeadScore: { $avg: "$leadScore" },
-                    hotLeads: { $sum: { $cond: [{ $gte: ["$leadScore", 8] }, 1, 0] } },
-                    avgClosing: { $avg: "$closingProbability" },
-                }},
+                {
+                    $group: {
+                        _id: "$counsellorName",
+                        totalCalls: { $sum: 1 },
+                        avgLeadScore: { $avg: "$leadScore" },
+                        hotLeads: { $sum: { $cond: [{ $gte: ["$leadScore", 8] }, 1, 0] } },
+                        avgClosing: { $avg: "$closingProbability" },
+                    }
+                },
                 { $sort: { avgLeadScore: -1 } },
                 { $limit: 10 },
+            ]),
+
+            // NEW — concern flag counts (fees, placement, parent, timing)
+            CallAnalysis.aggregate([
+                { $match: { status: "completed" } },
+                {
+                    $group: {
+                        _id: null,
+                        feesIssue: { $sum: { $cond: ["$feesIssue", 1, 0] } },
+                        placementConcern: { $sum: { $cond: ["$placementConcern", 1, 0] } },
+                        parentConcern: { $sum: { $cond: ["$parentConcern", 1, 0] } },
+                        timingConcern: { $sum: { $cond: ["$timingConcern", 1, 0] } },
+                    }
+                },
             ]),
         ]);
 
@@ -479,6 +495,9 @@ const getDashboardStats = async (req, res) => {
                 hotLeads: c.hotLeads,
                 avgClosing: Math.round(c.avgClosing * 10) / 10,
             })),
+            concernFlags: concernFlagAgg[0] || {
+                feesIssue: 0, placementConcern: 0, parentConcern: 0, timingConcern: 0,
+            },
         });
     } catch (error) {
         res.status(500).json({ message: "Server error.", error: error.message });

@@ -94,6 +94,8 @@ import AdminCallsPage from './pages/admin/AdminCallsPage';
 import AdminRecordingsPage from './pages/admin/AdminRecordingsPage';
 import AdminUsersPage from './pages/admin/AdminUsersPage';
 import AdminReportsPage from './pages/admin/AdminReportsPage';
+import AdminLeadScoringPage from './pages/admin/AdminLeadScoringPage';
+import AdminSearchPage from './pages/admin/AdminSearchPage';
 
 // Counselor pages
 import CounselorDashboard from './pages/counselor/CounselorDashboard';
@@ -171,6 +173,12 @@ function AppRoutes() {
       } />
       <Route path="/admin/recordings" element={
         <AdminRoute><AdminRecordingsPage /></AdminRoute>
+      } />
+      <Route path="/admin/lead-scoring" element={
+        <AdminRoute><AdminLeadScoringPage /></AdminRoute>
+      } />
+      <Route path="/admin/search" element={
+        <AdminRoute><AdminSearchPage /></AdminRoute>
       } />
       <Route path="/admin/users" element={
         <AdminRoute><AdminUsersPage /></AdminRoute>

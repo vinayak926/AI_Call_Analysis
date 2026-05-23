@@ -20,6 +20,8 @@ const ADMIN_NAV = [
   { path: '/admin/recordings', label: 'Recordings', icon: Mic },
   { path: '/admin/users', label: 'Users', icon: Users },
   { path: '/admin/reports', label: 'Reports', icon: FileText },
+  { path: '/admin/lead-scoring', label: 'Lead Scoring', icon: Target },
+  { path: '/admin/search', label: 'Search', icon: BarChart2 },
 ];
 
 const SENT_COLORS = { Positive: '#22c55e', Negative: '#ef4444', Neutral: '#f59e0b' };
@@ -103,20 +105,31 @@ export default function AdminDashboard() {
   ];
 
   // Top counsellors
-  const counsellorMap = {};
-  calls.forEach(c => {
-    const name = c.uploadedBy?.fullName || 'Unknown';
-    if (!counsellorMap[name]) counsellorMap[name] = { name, total: 0, completed: 0, avgScore: [] };
-    counsellorMap[name].total++;
-    if (c.status === 'completed') {
-      counsellorMap[name].completed++;
-      if (c.leadScore) counsellorMap[name].avgScore.push(c.leadScore);
-    }
-  });
-  const topCounsellors = Object.values(counsellorMap)
-    .map(c => ({ ...c, avg: c.avgScore.length ? (c.avgScore.reduce((a, b) => a + b, 0) / c.avgScore.length).toFixed(1) : '—' }))
-    .sort((a, b) => b.completed - a.completed)
-    .slice(0, 5);
+  // const counsellorMap = {};
+  // calls.forEach(c => {
+  //   const name = c.uploadedBy?.fullName || 'Unknown';
+  //   if (!counsellorMap[name]) counsellorMap[name] = { name, total: 0, completed: 0, avgScore: [] };
+  //   counsellorMap[name].total++;
+  //   if (c.status === 'completed') {
+  //     counsellorMap[name].completed++;
+  //     if (c.leadScore) counsellorMap[name].avgScore.push(c.leadScore);
+  //   }
+  // });
+  // const topCounsellors = Object.values(counsellorMap)
+  //   .map(c => ({ ...c, avg: c.avgScore.length ? (c.avgScore.reduce((a, b) => a + b, 0) / c.avgScore.length).toFixed(1) : '—' }))
+  //   .sort((a, b) => b.completed - a.completed)
+  //   .slice(0, 5);
+
+  // Top counsellors — backend leaderboard se (real AI scores)
+  const topCounsellors = dashStats?.counsellorLeaderboard?.length
+    ? dashStats.counsellorLeaderboard.slice(0, 5).map(c => ({
+      name: c.name,
+      completed: c.totalCalls,
+      avg: c.avgLeadScore?.toFixed(1) ?? '—',
+      hotLeads: c.hotLeads,
+      avgClosing: c.avgClosing,
+    }))
+    : [];
 
   const statusBadge = (status) => {
     const map = { pending: ['#fffbeb', '#d97706'], processing: ['#eff6ff', '#2563eb'], completed: ['#f0fdf4', '#16a34a'], failed: ['#fef2f2', '#dc2626'] };
@@ -288,7 +301,8 @@ export default function AdminDashboard() {
                         <span style={{ width: '22px', height: '22px', borderRadius: '50%', background: i === 0 ? '#fbbf24' : '#e8e3da', color: i === 0 ? '#92400e' : '#888', fontSize: '11px', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{i + 1}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontWeight: '700', fontSize: '13px', color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
-                          <div style={{ fontSize: '11px', color: '#aaa' }}>{c.completed} analysed · {c.total} total</div>
+                          {/* <div style={{ fontSize: '11px', color: '#aaa' }}>{c.completed} analysed · {c.total} total</div> */}
+                          <div style={{ fontSize: '11px', color: '#aaa' }}>{c.completed} calls · 🔥 {c.hotLeads ?? 0} hot · {c.avgClosing ?? '—'}% closing</div>
                         </div>
                         <span style={{ fontWeight: '800', fontSize: '14px', color: '#6366f1', flexShrink: 0 }}>{c.avg}</span>
                       </div>
@@ -299,7 +313,7 @@ export default function AdminDashboard() {
             </div>
 
 
-            {dashStats?.topConcerns?.length > 0 && (
+            {/* {dashStats?.topConcerns?.length > 0 && (
               <div style={{ background: 'white', borderRadius: '20px', border: '1px solid #e8e3da', padding: '24px', marginBottom: '20px' }}>
                 <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1a1a1a', margin: '0 0 16px' }}>
                   🔥 Top Student Concerns
@@ -316,7 +330,68 @@ export default function AdminDashboard() {
                   ))}
                 </div>
               </div>
-            )}
+            )} */}
+
+            {/* Concern Stats Section */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+
+              {/* Left: Concern Flag Breakdown with progress bars */}
+              <div style={{ background: 'white', borderRadius: '20px', border: '1px solid #e8e3da', padding: '24px' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1a1a1a', margin: '0 0 16px' }}>📊 Concern Breakdown</h3>
+                {[
+                  { label: 'Fees Issue', key: 'feesIssue', color: '#ef4444', bg: '#fef2f2' },
+                  { label: 'Placement Concern', key: 'placementConcern', color: '#f59e0b', bg: '#fffbeb' },
+                  { label: 'Parent Concern', key: 'parentConcern', color: '#8b5cf6', bg: '#f5f3ff' },
+                  { label: 'Timing Issue', key: 'timingConcern', color: '#06b6d4', bg: '#ecfeff' },
+                  { label: 'Follow-up Required', key: 'followUp', color: '#22c55e', bg: '#f0fdf4' },
+                ].map(({ label, key, color }) => {
+                  const total = dashStats?.totalAnalysed || 1;
+                  const count = key === 'followUp'
+                    ? (dashStats?.followUpCount || 0)
+                    : (dashStats?.concernFlags?.[key] || 0);
+                  const pct = Math.round((count / total) * 100);
+                  return (
+                    <div key={key} style={{ marginBottom: '14px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                        <span style={{ fontSize: '12px', fontWeight: '600', color: '#4b5563' }}>{label}</span>
+                        <span style={{ fontSize: '12px', fontWeight: '800', color }}>
+                          {count} <span style={{ color: '#aaa', fontWeight: '500' }}>({pct}%)</span>
+                        </span>
+                      </div>
+                      <div style={{ height: '7px', background: '#f0ece6', borderRadius: '99px', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: '99px', transition: 'width 0.5s' }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Right: Top Keywords with bar chart style */}
+              <div style={{ background: 'white', borderRadius: '20px', border: '1px solid #e8e3da', padding: '24px' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1a1a1a', margin: '0 0 16px' }}>🔥 Top Student Concerns</h3>
+                {!dashStats?.topConcerns?.length ? (
+                  <p style={{ color: '#aaa', fontSize: '13px' }}>No concern data yet</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {dashStats.topConcerns.slice(0, 6).map((c, i) => {
+                      const maxCount = dashStats.topConcerns[0]?.count || 1;
+                      const pct = Math.round((c.count / maxCount) * 100);
+                      return (
+                        <div key={i}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                            <span style={{ fontSize: '13px', fontWeight: '600', color: '#1a1a1a' }}>{c.concern}</span>
+                            <span style={{ fontSize: '12px', color: '#6366f1', fontWeight: '700' }}>{c.count} calls</span>
+                          </div>
+                          <div style={{ height: '7px', background: '#f0ece6', borderRadius: '99px' }}>
+                            <div style={{ height: '100%', width: `${pct}%`, background: '#6366f1', borderRadius: '99px' }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
 
             {/* Recent calls */}
             <div style={{ background: 'white', borderRadius: '20px', border: '1px solid #e8e3da', padding: '24px' }}>
